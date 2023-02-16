@@ -8,4 +8,4 @@ The motivation behind this program was to develop software that can reduce the b
 
 1. The software, which is solely written in R, allows user to process their data with minimal R experience as all parameters used within the program can be changed within excel sheets accompaning the project. 
 2. Mass calibration to lock masses is performed to minimize mass varibaility which commonly occurs in time-of-flight mass spectrometers expecially during long studies. 
-3. Extracted ion electropherograms (EIEs) are extracted from the calibrated data file using the user supplied mass-to-charge list and smoothed.
+3. Extracted ion electropherograms (EIEs) are extracted from the calibrated data files using the user supplied mass-to-charge list and smoothed.
