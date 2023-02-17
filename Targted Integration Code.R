@@ -573,7 +573,7 @@ for (d in 1:length(data.files)){
         expected.mt <- filtered.peaks.df[good.peaks[nearest.good.peak], 2] - 
           (good.peaks[nearest.good.peak] - bad.peaks[b]) * median.space
         
-        # find peaks nearest to the expected migration time within a tolerance of 0.5 percent
+        # find peaks nearest to the expected migration time within the tolerance
         
         peaks <- peak.df %>%
           filter(., peak.df[,2] <= expected.mt + peak.tolerance & peak.df[,2] >= expected.mt - peak.tolerance)
