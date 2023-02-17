@@ -670,6 +670,10 @@ for (d in 1:length(data.files)){
     
     comment.df[,m] <- ifelse(peak.area.df[,m] < (mass.df$snr.threshold[m] * noise), "<LOD", comment.df[,m])
     
+    ### Annotate injections that are not detected
+    
+    comment.df[,m] <- ifelse(peak.area.df[,m] == 0, "No Peak Detected", comment.df[,m])
+    
   }
   
   ### Filter interfered peaks ----
@@ -708,6 +712,7 @@ for (d in 1:length(data.files)){
     }
   }
 
+  ### Annotate no peaks detected ----
   
   # 7. Plotting ----
   
