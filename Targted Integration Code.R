@@ -388,13 +388,15 @@ pb <- winProgressBar(title = "Progress Bar",
     
     # Filter peak.df for peaks within rmt tolerance
     
-    rmt.tolerance <- mass.df$rmt.tolerance.percent[1] / 100
+    rmt.tolerance <- mass.df$rmt.tolerance.percent[m] / 100
     
     for (i in 1:num.of.injections){
       
       peaks <- peak.df %>%
-        filter(., peak.df[,2] / 60 <= (1 + rmt.tolerance) * expected.mt[i] & 
-                 peak.df[,2] / 60 >= (1 - rmt.tolerance) * expected.mt[i])
+        filter(., peak.df[,2] <= (1 + rmt.tolerance) * expected.mt[i] * 60 & 
+                 peak.df[,2] >= (1 - rmt.tolerance) * expected.mt[i] * 60)
+      
+      # If more than one peak is found choose the nearest one
       
       if(nrow(peaks) > 1){
         peaks <- (peak.df[,2] - expected.mt[i] * 60) %>%
@@ -402,6 +404,8 @@ pb <- winProgressBar(title = "Progress Bar",
           which.min(.)
         peaks <- peak.df[peaks,]
       }
+      
+      # If no peak is found, generate a place holder
       
       if(nrow(peaks) == 0){
         
@@ -427,11 +431,90 @@ pb <- winProgressBar(title = "Progress Bar",
       }
     }
     
+    ### Filter duplicated peaks ----
+    
+    # If the same peak is assigned to multiple injection numbers, reapply rmt filter with more austere rmt tolerances
+    # New rmt tolerance will be the original / count, which starts at 2 and increases by 1 each iteration
+    
+    count = 2
+    
+    if (any(duplicated(filtered.peaks.df[,2]))){
+      
+      strict.rmt.tolerance <- rmt.tolerance/count
+      
+      # find rows with duplicated values 
+      
+      duplicate.location <- filtered.peaks.df[,2] %>%
+        duplicated() %>%
+        which()
+      
+      duplicate.rows <- which(filtered.peaks.df[,2] %in% filtered.peaks.df[duplicate.location,2])
+      
+      # reapply filtering for these peaks with the more strict rmt tolerance
+      
+      for (r in duplicate.rows){
+        
+        peaks <- peak.df %>%
+          filter(., peak.df[,2] <= (1 + strict.rmt.tolerance) * expected.mt[r] * 60 & 
+                   peak.df[,2] >= (1 - strict.rmt.tolerance) * expected.mt[r] * 60)
+        
+        # If more than one peak is found choose the nearest one
+        
+        if(nrow(peaks) > 1){
+          peaks <- (peak.df[,2] - expected.mt[r] * 60) %>%
+            abs() %>%
+            which.min(.)
+          peaks <- peak.df[peaks,]
+        }
+        
+        # If no peak is found, generate a place holder
+        
+        if(nrow(peaks) == 0){
+          
+          nearest.mt <- (eie.df$mt.seconds - expected.mt[r] * 60) %>%
+            abs() %>%
+            which.min(.)
+          
+          peaks <- data.frame(eie.df[nearest.mt,1],
+                              eie.df[nearest.mt,1],
+                              eie.df[nearest.mt,1],
+                              eie.df[nearest.mt,r + 1],
+                              eie.df[nearest.mt,r + 1],
+                              eie.df[nearest.mt,r + 1],
+                              0)
+          
+          colnames(peaks) <- colnames(peak.df)
+        }
+        
+        filtered.peaks.df[r,] <- peaks
+      }
+      
+      # check if duplicate rows still appear
+      
+      if (any(duplicated(filtered.peaks.df[,2]))){
+        
+        duplicate.location <- filtered.peaks.df[,2] %>%
+          duplicated() %>%
+          which()
+        
+        duplicate.rows <- which(filtered.peaks.df[,2] %in% filtered.peaks.df[duplicate.location,2])
+        
+        # restart loop with remaining duplicate rows
+        
+        r <- duplicate.rows[1]
+        
+        # Designate a more strict cut off
+        
+        count = count + 1
+        
+        strict.rmt.tolerance <- rmt.tolerance/count
+    }
+    
     ### Filter using peak spaces ----
     
     # Get peak space tolerance
     
-    median.space.tol <- 20 / 100
+    median.space.tol <- mass.df$peak.space.tolerance.percent[m] / 100
     
     # Calculate median peak space
     
