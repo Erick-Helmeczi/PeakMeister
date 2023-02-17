@@ -46,9 +46,7 @@ pb <- winProgressBar(title = "Progress Bar",
 
 ## Initiate data file for loop ----
 
-#for (d in 1:length(data.files)){
-  
-  d= 1
+for (d in 1:length(data.files)){
 
   # 2. Prepare Data File ----
 
@@ -508,6 +506,7 @@ pb <- winProgressBar(title = "Progress Bar",
         count = count + 1
         
         strict.rmt.tolerance <- rmt.tolerance/count
+      }
     }
     
     ### Filter using peak spaces ----
@@ -553,6 +552,12 @@ pb <- winProgressBar(title = "Progress Bar",
       good.peaks <- c(1:num.of.injections) %>%
         setdiff(., c(bad.peaks))
       
+      # Use a quarter of the mt difference between good peaks as a tolerance to find the new peaks
+      
+      peak.tolerance <- filtered.peaks.df[good.peaks,2] %>%
+        diff() %>%
+        median () / 4
+      
       # find the nearest good peak neighbor for each bad peak
       
       for (b in 1:length(bad.peaks)){
@@ -568,10 +573,10 @@ pb <- winProgressBar(title = "Progress Bar",
         expected.mt <- filtered.peaks.df[good.peaks[nearest.good.peak], 2] - 
           (good.peaks[nearest.good.peak] - bad.peaks[b]) * median.space
         
-        # find peaks nearest to the expected migration time within rmt limits
+        # find peaks nearest to the expected migration time within a tolerance of 0.5 percent
         
         peaks <- peak.df %>%
-          filter(., peak.df[,2] <= (1 + rmt.tolerance) * expected.mt & peak.df[,2] >= (1 - rmt.tolerance) * expected.mt)
+          filter(., peak.df[,2] <= expected.mt + peak.tolerance & peak.df[,2] >= expected.mt - peak.tolerance)
         
         # if more than one peak is found, select the closest one
         
