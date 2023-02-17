@@ -277,10 +277,8 @@ for (d in 1:length(data.files)){
   ## Peak detection ---- 
   
   # Define the minimum number of consecutive increasing and decreasing points a peak must have
-  # Define a minimum peak width in seconds
   
   n <- parameters.df$required.points.for.peak.picking[1]
-  min.width.cut.off <- mass.df$minimim.peak.width.seconds[1]
   
   for (m in 1:num.of.metabolites){
     
@@ -324,7 +322,10 @@ for (d in 1:length(data.files)){
                           apex.intensity,
                           end.intensity)
     
-    # Remove peaks that do not meet the minimum peak width cutoff
+    ## Filter peaks by peak width ----
+    # Define a minimum peak width cut off in seconds
+    
+    min.width.cut.off <- mass.df$minimim.peak.width.seconds[m]
     
     peak.df <- subset(peak.df, (peak.df$end - peak.df$start) >= min.width.cut.off)
     
