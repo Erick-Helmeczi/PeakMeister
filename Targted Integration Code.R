@@ -711,8 +711,6 @@ for (d in 1:length(data.files)){
       }
     }
   }
-
-  ### Annotate no peaks detected ----
   
   # 7. Plotting ----
   
