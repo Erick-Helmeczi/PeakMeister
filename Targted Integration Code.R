@@ -537,16 +537,17 @@ for (d in 1:length(data.files)){
       bad.space <- NA
     }
     
-    ## Identify bad peaks, and replace them with peaks meeting peak space criteria
+    # identify which peaks are potentially incorrectly assigned (bad peaks)
+    # these are peaks before and after each bad space
     
-    if(is.na(bad.space[1]) == FALSE){
-      
-      # identify which peaks are potentially incorrectly assigned (bad peaks)
-      # these are peaks before and after each bad space
-      
-      bad.peaks <- c(bad.space, bad.space + 1) %>%
-        unique() %>%
-        sort()
+    bad.peaks <- c(bad.space, bad.space + 1) %>%
+      unique() %>%
+      sort()
+    
+    # Identify bad peaks, and replace them with peaks meeting peak space criteria
+    # If the number of bad peaks is equal to the number of injections, do not apply this filter
+    
+    if(is.na(bad.space[1]) == FALSE & length(bad.peaks) < num.of.injections){
       
       # define remaining peaks which are correctly assigned (good peaks)
       
@@ -814,6 +815,8 @@ for (d in 1:length(data.files)){
     data.files.name <- gsub(".mzML", "", data.files.name, fixed = TRUE)
     
     ggsave(filename=paste(name,"_",data.files.name[d],".png",sep=""),
+           width = 11,
+           height = 8
            plot = last_plot(),
            path = paste("Metabolite_Plots/", mass.df$name[m], sep = ""))
     
