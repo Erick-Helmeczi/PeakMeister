@@ -437,7 +437,7 @@ for (d in 1:length(data.files)){
     
     count = 2
     
-    if (any(duplicated(filtered.peaks.df[,2]))){
+    while (any(duplicated(filtered.peaks.df[,2]))){
       
       strict.rmt.tolerance <- rmt.tolerance/count
       
@@ -486,28 +486,14 @@ for (d in 1:length(data.files)){
         }
         
         filtered.peaks.df[r,] <- peaks
+        
       }
       
-      # check if duplicate rows still appear
+      # Designate a more strict cut off
       
-      if (any(duplicated(filtered.peaks.df[,2]))){
-        
-        duplicate.location <- filtered.peaks.df[,2] %>%
-          duplicated() %>%
-          which()
-        
-        duplicate.rows <- which(filtered.peaks.df[,2] %in% filtered.peaks.df[duplicate.location,2])
-        
-        # restart loop with remaining duplicate rows
-        
-        r <- duplicate.rows[1]
-        
-        # Designate a more strict cut off
-        
-        count = count + 1
-        
-        strict.rmt.tolerance <- rmt.tolerance/count
-      }
+      count = count + 1
+      
+      strict.rmt.tolerance <- rmt.tolerance/count
     }
     
     ### Filter using peak spaces ----
@@ -544,10 +530,14 @@ for (d in 1:length(data.files)){
       unique() %>%
       sort()
     
+    # Define a count that will be used to modify the peak space tolerance
+    
+    count = 4
+    
     # Identify bad peaks, and replace them with peaks meeting peak space criteria
     # If the number of bad peaks is equal to the number of injections, do not apply this filter
     
-    if(is.na(bad.space[1]) == FALSE & length(bad.peaks) < num.of.injections){
+    while(length(bad.peaks) > 0 & length(bad.peaks) < num.of.injections){
       
       # define remaining peaks which are correctly assigned (good peaks)
       
@@ -558,7 +548,7 @@ for (d in 1:length(data.files)){
       
       peak.tolerance <- filtered.peaks.df[good.peaks,2] %>%
         diff() %>%
-        median () / 4
+        median () / count
       
       # find the nearest good peak neighbor for each bad peak
       
@@ -610,8 +600,22 @@ for (d in 1:length(data.files)){
           filtered.peaks.df[bad.peaks[b],] <- peaks
         }
         
+        # if only one peak is found
+        
         filtered.peaks.df[bad.peaks[b],] <- peaks
+
       }
+      
+      count = count + 1
+      
+      duplicate.location <- filtered.peaks.df[,2] %>%
+        duplicated() %>%
+        which()
+      
+      # bad peaks correspond to any rows that are not unique
+      
+      bad.peaks <- which(filtered.peaks.df[,2] %in% filtered.peaks.df[duplicate.location,2])
+      
     }
     
     # Summarize filtered.peak.df data in metabolite.peak.df
@@ -816,7 +820,7 @@ for (d in 1:length(data.files)){
     
     ggsave(filename=paste(name,"_",data.files.name[d],".png",sep=""),
            width = 11,
-           height = 8
+           height = 8,
            plot = last_plot(),
            path = paste("Metabolite_Plots/", mass.df$name[m], sep = ""))
     
