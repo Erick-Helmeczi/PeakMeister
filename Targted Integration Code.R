@@ -272,7 +272,7 @@ for (d in 1:length(data.files)){
   
   rm(list = c("electropherograms", "mzr", "Smooth", "temp.df", "m", "max", "min"))
   
-  # 6. Peak Detection and Integration, and Filtering ----
+  # 6. Peak Detection, Integration, and Filtering ----
   
   ## Peak detection ---- 
   
