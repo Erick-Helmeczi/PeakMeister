@@ -677,7 +677,7 @@ for (d in 1:length(data.files)){
     
     ### Annotate injections that are not detected
     
-    comment.df[,m] <- ifelse(peak.area.df[,m] == 0, "No Peak Detected", comment.df[,m])
+    comment.df[,m] <- ifelse(peak.area.df[,m] == 0, "NPD", comment.df[,m])
     
   }
   
@@ -698,7 +698,7 @@ for (d in 1:length(data.files)){
     # Build an interference data frame since some are metabolites and some are internal standards
     
     interference.df <- cbind(metabolite.peaks.df[,seq(2, ncol(metabolite.peaks.df), 7)],
-                             is.mt.df[is.mt.df.start[d]:is.mt.df.end[d],2:ncol(is.mt.df)])
+                             is.mt.df[is.mt.df.start[d]:is.mt.df.end[d],2:ncol(is.mt.df)] * 60)
     
     colnames(interference.df)[1:num.of.metabolites] <- mass.df$name
     
@@ -784,8 +784,8 @@ for (d in 1:length(data.files)){
     ggplot(data = eie.df) +
       geom_line(aes(x = mt.seconds/60, y = eie.df[,m+1]), colour = "grey50") +
       theme_classic() +
-      coord_cartesian(xlim = c(start.df[1,m]/60-2, end.df[num.of.injections,m]/60+2),
-                      ylim = c(0, 1.2 * max.peak.height)) +
+      coord_cartesian(xlim = c(start.df[1,m]/60-1, end.df[num.of.injections,m]/60+1),
+                      ylim = c(min(eie.df$mt.seconds[(start.df[1,m] + 120):(end.df[num.of.injections,m] + 120)]), 1.2 * max.peak.height)) +
       scale_y_continuous(name = "Ion Counts",
                          labels = function(x) format(x, scientific = TRUE),
                          expand = c(0,0),
@@ -799,10 +799,14 @@ for (d in 1:length(data.files)){
                   alpha =0.4) +
       geom_text(data = ann.df,
                 label = ann.df$peak.number,
+                size  = 5,
+                family = "sans",
                 aes(x = peak.apex.seconds/60,
                     y = peak.height.counts + 0.07 * max.peak.height)) +
       geom_text(data = ann.df,
                 label = ann.df$comment,
+                size  = 5,
+                family = "sans",
                 aes(x = peak.apex.seconds/60,
                     y = peak.height.counts + 0.11 * max.peak.height)) +
       geom_segment(data = ann.df,
@@ -811,7 +815,8 @@ for (d in 1:length(data.files)){
                        xend = peak.apex.seconds/60,
                        yend = peak.height.counts + 0.01 * max.peak.height),
                    arrow = arrow(length = unit(0.15, "cm"), type = "closed")) +
-      theme(legend.position = "none")
+      theme(legend.position = "none",
+            text = element_text(size = 15, family = "sans"))
     
     # Save plots to their respective folders within the "Plots" folder
     
@@ -819,8 +824,8 @@ for (d in 1:length(data.files)){
     data.files.name <- gsub(".mzML", "", data.files.name, fixed = TRUE)
     
     ggsave(filename=paste(name,"_",data.files.name[d],".png",sep=""),
-           width = 11,
-           height = 8,
+           width = 16,
+           height = 9,
            plot = last_plot(),
            path = paste("Metabolite_Plots/", mass.df$name[m], sep = ""))
     
