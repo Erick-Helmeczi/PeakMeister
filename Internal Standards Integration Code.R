@@ -478,7 +478,6 @@ for (d in 1:length(data.files)){
     }
     
     
-    
     # Summarize peak.df data in is.peak.df
     
     if(i == 1){
@@ -584,7 +583,7 @@ for (d in 1:length(data.files)){
   ## Generate peak area data frame ----
   
   peak.area.df <- cbind(file.name = c(data.files.name[d],2:num.of.injections),
-                        is.peaks.df[,seq(from = 4, to = ncol(is.peaks.df), by = 7)])
+                        is.peaks.df[,seq(from = 7, to = ncol(is.peaks.df), by = 7)])
   peak.area.df$file.name[2:num.of.injections] <- ""
   colnames(peak.area.df)[2:(num.of.iss+1)] <- is.df$name
   
