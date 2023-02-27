@@ -1,5 +1,9 @@
 rm(list=ls())
 
+# Install and load packages
+
+if (!require("pacman")) install.packages("pacman")
+
 pacman::p_load("tidyverse", "stats", "DescTools", "xcms", "rlang", "stringr",
                install = TRUE)
 
@@ -37,7 +41,7 @@ data.files <- list.files(path = "mzML Files",
 
 # Add a progress bar
 
-pb <- winProgressBar(title = "Progress Bar", 
+pb <- winProgressBar(title = "Peak Seeker", 
                      label = paste("Number of Files Completed: 0 /", length(data.files)), 
                      min = 0,      
                      max = length(data.files), 
@@ -73,7 +77,7 @@ for (d in 1:length(data.files)){
   
   # 3. Perform Mass Calibration ----
   
-  ## Find mz closest to expected reference masses with greatest intensity to use as the experimental accurate mass ----
+  ## Find mz closest to expected reference masses with greatest intensity to use as the experimental accurate mass
   
   # Read reference mass values, window to search in, minimum counts to be included
   
@@ -785,7 +789,7 @@ for (d in 1:length(data.files)){
       geom_line(aes(x = mt.seconds/60, y = eie.df[,m+1]), colour = "grey50") +
       theme_classic() +
       coord_cartesian(xlim = c(start.df[1,m]/60-1, end.df[num.of.injections,m]/60+1),
-                      ylim = c(min(eie.df$mt.seconds[(start.df[1,m] + 120):(end.df[num.of.injections,m] + 120)]), 1.2 * max.peak.height)) +
+                      ylim = c(min(eie.df$mt.seconds[(start.df[1,m] + 60):(end.df[num.of.injections,m] + 60)]), 1.2 * max.peak.height)) +
       scale_y_continuous(name = "Ion Counts",
                          labels = function(x) format(x, scientific = TRUE),
                          expand = c(0,0),
