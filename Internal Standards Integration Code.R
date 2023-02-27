@@ -1,5 +1,9 @@
 rm(list=ls())
 
+# Install and load packages
+
+if (!require("pacman")) install.packages("pacman")
+
 pacman::p_load("tidyverse", "stats", "DescTools", "xcms", "rlang", "stringr",
                install = TRUE)
 
@@ -29,14 +33,14 @@ for(i in 1:num.of.iss){
              showWarnings = FALSE)
 }
 
-# Create vector of mzML file names and start a for loop to analyze each file sequentially  
+# Create vector of mzML file names
 
 data.files <- list.files(path = "mzML Files",
                          full.names = TRUE)
 
 # Add a progress bar
 
-pb <- winProgressBar(title = "Progress Bar", 
+pb <- winProgressBar(title = "Peak Seeker", 
                      label = paste("Number of Files Completed: 0 /", length(data.files)), 
                      min = 0,      
                      max = length(data.files), 
@@ -68,7 +72,7 @@ for (d in 1:length(data.files)){
   
   # 3. Perform Mass Calibration ----
   
-  ## Find mz closest to expected reference masses with greatest intensity to use as the experimental accurate mass ----
+  # Find mz closest to expected reference masses with greatest intensity to use as the experimental accurate mass
   
   # Read reference mass values, window to search in, minimum counts to be included
   
@@ -542,8 +546,8 @@ for (d in 1:length(data.files)){
     ggplot(data = eie.df) +
       geom_line(aes(x = mt.seconds/60, y = eie.df[,i+1]), colour = "grey50") +
       theme_classic() +
-      coord_cartesian(xlim = c(start.df[1,i]/60-2, end.df[num.of.injections,i]/60+2),
-                      ylim = c(0, 1.2 * max.peak.height)) +
+      coord_cartesian(xlim = c(start.df[1,i]/60-1, end.df[num.of.injections,i]/60+1),
+                      ylim = c(min(eie.df$mt.seconds[(start.df[1,m] + 60):(end.df[num.of.injections,m] + 60)]), 1.2 * max.peak.height)) +
       scale_y_continuous(name = "Ion Counts",
                          labels = function(x) format(x, scientific = TRUE),
                          expand = c(0,0),
@@ -557,6 +561,8 @@ for (d in 1:length(data.files)){
                   alpha =0.4) +
       geom_text(data = ann.df,
                 label = ann.df$peak.number,
+                size  = 5,
+                family = "sans",
                 aes(x = peak.apex.seconds/60,
                     y = peak.height.counts + 0.07 * max.peak.height)) +
       geom_segment(data = ann.df,
@@ -565,7 +571,8 @@ for (d in 1:length(data.files)){
                        xend = peak.apex.seconds/60,
                        yend = peak.height.counts + 0.01 * max.peak.height),
                    arrow = arrow(length = unit(0.15, "cm"), type = "closed")) +
-      theme(legend.position = "none")
+      theme(legend.position = "none",
+            text = element_text(size = 15, family = "sans"))
     
     # Save plots to their respective folders within the "Plots" folder
     
@@ -573,6 +580,8 @@ for (d in 1:length(data.files)){
     data.files.name <- gsub(".mzML", "", data.files.name, fixed = TRUE)
     
     ggsave(filename=paste(name,"_",data.files.name[d],".png",sep=""),
+           width = 16,
+           height = 9,
            plot = last_plot(),
            path = paste("Internal Standard Plots/", is.df$name[i], sep = ""))
     
