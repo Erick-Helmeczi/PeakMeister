@@ -11,27 +11,34 @@ pacman::p_load("tidyverse", "stats", "DescTools", "xcms", "rlang", "stringr",
 
 # Import the user supplied table of metabolites and conditions
 
-mass.df <- readxl::read_excel("Inputs/Targeted Mass List.xlsx") %>%
+mass.df <- readxl::read_excel("Mass List and Parameters.xlsx") %>%
   as.data.frame()
 
-parameters.df <- readxl::read_excel("Inputs/Parameters.xlsx") %>%
+is.df <- readxl::read_excel("Mass List and Parameters.xlsx", sheet = 2) %>%
   as.data.frame()
 
-# Determine the number of metabolites
+parameters.df <- readxl::read_excel("Mass List and Parameters.xlsx", sheet = 3) %>%
+  as.data.frame()
+
+# Determine the number of metabolites and internal standards
 
 num.of.metabolites <- nrow(mass.df)
+
+num.of.is <- nrow(is.df)
 
 # Get the number of injections
 
 num.of.injections <- parameters.df$number.of.injections[1]
 
-# Generate plot folders for each metabolite
+# Generate plot folders for each internal standard and metabolite
 
-for(m in 1:num.of.metabolites){
-  path = paste("Metabolite_Plots/", mass.df$name[m], sep = "")
+name.vec <- c(is.df$name, mass.df$name)
+
+for(n in 1:length(name.vec)){
+  path = paste("Plots/",name.vec[n], sep = "")
   dir.create(path = path,
              showWarnings = FALSE)
-  rm(list = c("path", "m"))
+  rm(list = c("path", "n"))
 }
 
 # Create vector of data file names 
@@ -228,7 +235,8 @@ for (d in 1:length(data.files)){
   rm(list = c("model", "model.data", "assaydata.names", "correction.vector", "mz.indices",
               "experimental.mass.diff", "experimental.mz", "index.of.lower.ref.mass", "minimum.counts",
               "index.of.upper.ref.mass", "intensity", "mass.window", "max.intensity.index",
-              "max.ref.mass", "min.ref.mass", "mz", "ref.mass", "s", "spectrum"))
+              "max.ref.mass", "min.ref.mass", "mz", "ref.mass", "s", "spectrum", "slope", "intercept",
+              "left_line_points", "model_left", "model_right", "right_line_points"))
   
   # 4. Extract Electropherograms ----
   
@@ -236,10 +244,12 @@ for (d in 1:length(data.files)){
   
   mass.error = parameters.df$extraction.window.ppm[1]
   
-  # Create a matrix of minimum and maximum m/z values for each metabolite
+  # Create a matrix of minimum and maximum m/z values for each internal standard and metabolite
   
-  min <- mass.df$mz - mass.df$mz * mass.error/1000000
-  max <- mass.df$mz + mass.df$mz * mass.error/1000000
+  mz <- c(is.df$mz, mass.df$mz)
+  
+  min <- mz - mz * mass.error/1000000
+  max <- mz + mz * mass.error/1000000
   mzr <- matrix(c(min, max), ncol = 2)
   
   # Extract electropherograms
@@ -255,28 +265,298 @@ for (d in 1:length(data.files)){
   
   eie.df <- data.frame("mt.seconds" = electropherograms[1]@rtime)
   
-  for (m in 1:num.of.metabolites){
-    temp.df <- data.frame(electropherograms[m]@intensity)
-    colnames(temp.df) <- paste(mass.df[m,1], "intensity", sep = ".")
+  for (n in 1:length(name.vec)){
+    temp.df <- data.frame(electropherograms[n]@intensity)
+    colnames(temp.df) <- paste(name.vec[n], "intensity", sep = " ")
     eie.df <- cbind(eie.df,temp.df)
   }
   
   # 5. Smooth Intensity Vectors ----
   
-  for (m in 2:ncol(eie.df)){ 
+  for (n in 2:length(name.vec)){ 
     Smooth <- with(eie.df, 
                    ksmooth(x = mt.seconds, 
-                           y = eie.df[,m], 
+                           y = eie.df[,n], 
                            kernel = "normal", 
                            bandwidth = parameters.df$eie.smoothing.strength[1]))
-    eie.df[,m] <- Smooth[["y"]]
+    eie.df[,n] <- Smooth[["y"]]
   }
   
   # Clean-up environment
   
-  rm(list = c("electropherograms", "mzr", "Smooth", "temp.df", "m", "max", "min"))
+  rm(list = c("electropherograms", "mzr", "Smooth", "temp.df", "max", "min", 
+              "n", "mass.error"))
   
-  # 6. Peak Detection, Integration, and Filtering ----
+  # 6. Internal Standard Peak Detection, Integration, and Filtering ----
+  
+  ## Peak detection ---- 
+  
+  n <- parameters.df$required.points.for.peak.picking[1]
+  
+  for (s in 1:num.of.is){
+    
+    rle.output <- eie.df[,s+1] %>%
+      diff() %>%
+      sign() %>%
+      rle()
+    
+    consecutive.runs <- which(rle.output$lengths > n & rle.output$values == 1)
+    consecutive.runs <- subset(consecutive.runs, (consecutive.runs + 1) %in% (which(rle.output$lengths > n)) == TRUE)
+    
+    run.lengths <- cumsum(rle.output$lengths) + 1
+    
+    start <- eie.df$mt.seconds[run.lengths[consecutive.runs - 1]]
+    apex <- eie.df$mt.seconds[run.lengths[consecutive.runs]]
+    end <- eie.df$mt.seconds[run.lengths[consecutive.runs + 1]]
+    
+    # For FWHM calculations I will also add intensity values here as well
+    
+    start.intensity <- eie.df[run.lengths[consecutive.runs - 1], (s+1)]
+    apex.intensity <- eie.df[run.lengths[consecutive.runs], (s+1)]
+    end.intensity <- eie.df[run.lengths[consecutive.runs + 1], (s+1)]
+    
+    # Account for peaks that start immediately during the analysis
+    
+    if(length(start) != length(apex)){
+      start <- append(start, 0, 0)
+      start.intensity <- append(start.intensity, 0, 0)
+    }
+    
+    # Create a data frame containing the start, apex, and end migration times of each peak
+    
+    peak.df <- data.frame(start,
+                          apex,
+                          end,
+                          start.intensity,
+                          apex.intensity,
+                          end.intensity)
+    
+    ## Migration time filtering ----
+    
+    # Filter peaks that are outside migration time limits
+    
+    peak.df <- subset(peak.df, peak.df$start >= is.df$min.rt.min[s] * 60 & peak.df$end <= is.df$max.rt.min[s] * 60)
+    
+    ## Integrate peaks ----
+    
+    peak.area.vector = c(1:nrow(peak.df))
+    
+    for (p in 1:nrow(peak.df)){
+      
+      peak.area.vector[p] <- AUC(eie.df$mt.seconds,
+                                 eie.df[,s+1],
+                                 method = "trapezoid",
+                                 from = peak.df[p,1],
+                                 to = peak.df[p,3],
+                                 absolutearea = FALSE,
+                                 na.rm = FALSE)
+      
+      peak.area.vector[p] <- peak.area.vector[p] - (peak.df[p,3] - peak.df[p,1]) * min(peak.df[p,4], peak.df[p,6])
+    }
+    
+    peak.df <- cbind(peak.df, peak.area.vector)
+    
+    # rename peak.df columns
+    
+    colnames.vector = c(paste(name.vec[s], "start.seconds", sep = "."),
+                        paste(name.vec[s], "apex.seconds", sep = "."),
+                        paste(name.vec[s], "end.seconds", sep = "."),
+                        paste(name.vec[s], "start.intensity", sep = "."),
+                        paste(name.vec[s], "apex.intensity", sep = "."),
+                        paste(name.vec[s], "end.intensity", sep = "."),
+                        paste(name.vec[s], "peak.area", sep = "."))
+    
+    colnames(peak.df) <- colnames.vector
+    
+    # Retain peak.df for future filtering steps
+    
+    peak.df.fill <- peak.df
+    
+    ## FWHM filtering ----
+    
+    # Find the peak intensity at half the peak height
+    
+    intensity.fwhm <- peak.df[,4] + (peak.df[,5] - peak.df[,4])/2 
+    
+    # Find the migration times closest to these intensities within each peak
+    
+    fwhm.vec <- vector()
+    single.eie <- eie.df[,c(1,s+1)]
+    
+    for(p in 1:nrow(peak.df)){
+      
+      single.eie.temp <- subset(single.eie, single.eie$mt.seconds >= peak.df[p,1] & single.eie$mt.seconds <= peak.df[p,2])
+      fwhm.mt.left <- single.eie.temp$mt.seconds[which.min(abs(single.eie.temp[,2] - intensity.fwhm[p]))]
+      
+      single.eie.temp <- subset(single.eie, single.eie$mt.seconds <= peak.df[p,3] & single.eie$mt.seconds >= peak.df[p,2])
+      fwhm.mt.right <- single.eie.temp$mt.seconds[which.min(abs(single.eie.temp[,2] - intensity.fwhm[p]))]
+      
+      fwhm.vec <- append(fwhm.vec, fwhm.mt.right - fwhm.mt.left)
+      
+    }
+    
+    peak.df$fwhm <- fwhm.vec
+    
+    # Determine the fwhm of the peaks (n = num.of.injections) with the greatest area
+    
+    df.temp <- peak.df[order(-peak.df[,8]),]
+    df.temp <- df.temp[1:num.of.injections,]
+    
+    fwhm.cutoff <- median(df.temp$fwhm)
+    
+    peak.df <- subset(peak.df, peak.df$fwhm <= (fwhm.cutoff * is.df$peak.fwhm.tolerance.multiplier[s]))
+    peak.df <- peak.df[,c(1:7)]
+    
+    # subset peak.df so that only the peaks (n = number.of.injections) with the greatest area are kept
+    
+    cut.off <- sort(peak.df[,7], decreasing = TRUE)[num.of.injections]
+    
+    peak.df <- subset(peak.df, peak.df[,7] >= cut.off)
+    
+    ## Peak space filtering ----
+    
+    # Determine the upper and lower migration time limits for space between peaks
+    
+    median.space <- peak.df[,2] %>%
+      diff() %>%
+      median()
+    
+    median.space.tol <- is.df$peak.space.tolerance.percent[s] / 100
+    
+    median.space.lower.lim <- median.space - median.space * median.space.tol
+    median.space.upper.lim <- median.space + median.space * median.space.tol
+    
+    # Check if peaks migrate within the tolerance limits
+    
+    peak.space.tol.check <- between(diff(peak.df[,2]), median.space.lower.lim, median.space.upper.lim)
+    
+    if(all(peak.space.tol.check) != TRUE){
+      bad.space <- which(peak.space.tol.check == FALSE)
+    }else{
+      bad.space <- NA
+    }
+    
+    ## Scenario 1 ----
+    # Only one bad space is detected
+    
+    if(length(bad.space) == 1 & is.na(bad.space[1]) == FALSE){
+      
+      false.peak.diff <- peak.df[num.of.injections, 2] - peak.df[(num.of.injections - 1), 2]
+      
+      # This algorithm always assumes the final peak is false - likely due to carryover
+      # It is possible the first peak is false but this seems less likely
+      # Final peak only removed if case 1 does not produce a duplicate
+      
+      # Case 1- An interior peak is missing (usually a blank)
+      
+      if(bad.space != (num.of.injections - 1)){
+        
+        # Since the we know the bad space is not at the end, use the space after the bad space to find the expected apex
+        
+        expected.peak.apex <- peak.df[bad.space[1],2] + peak.df[(bad.space[1] + 2),2] - peak.df[(bad.space[1] + 1),2]
+        
+      }
+      
+      # Case 2 -  Final space is false and less than median - suspect that true final peak was missed
+      
+      if(bad.space == (num.of.injections - 1) & false.peak.diff < median.space.upper.lim){
+        expected.peak.apex <- peak.df[(num.of.injections - 1 ),2] + median.space
+      }
+      
+      # Case 3 - Final space is false and greater than median - suspect that peak 1 was missed
+      
+      if(bad.space == (num.of.injections - 1) & false.peak.diff > median.space.lower.lim){
+        expected.peak.apex <- peak.df[1,2] - median.space
+      }
+      
+      peak <- which.min(abs(peak.df.fill[,2] - expected.peak.apex))
+      peak.df <- rbind(peak.df, peak.df.fill[peak,])
+      
+      peak.df <- peak.df[order(peak.df[,2]),]
+      
+      # Remove bad peak
+      
+      if (any(duplicated(peak.df[,2]))){
+        
+        peak.df <- peak.df[-c(which(duplicated(peak.df[,2]))),]
+        
+      }else{
+        
+        peak.df <- peak.df[1:(num.of.injections),]
+        
+      }
+    }
+    
+    ## Scenario 2 ---- 
+    #Two or three bad spaces are detected 
+    
+    if(length(bad.space) == 2 | length(bad.space) == 3){
+      
+      peaks.to.check <- c(bad.space, (bad.space + 1)) %>%
+        unique() %>%
+        sort()
+      
+      # Outside peaks must be checked last
+      
+      peaks.to.check <- c(peaks.to.check[-1], peaks.to.check[1])
+      
+      # Loop through each suspect bad peak and remove them iteratively until the number of bad spaces reaches 1
+      
+      for (p in 1:length(peaks.to.check)){
+        
+        num.bad.space <- peak.df[,2] %>%
+          .[-c(peaks.to.check[p])] %>%
+          diff(.) %>%
+          between (median.space.lower.lim, median.space.upper.lim) 
+        num.bad.space <- length(which(num.bad.space == FALSE))
+        
+        if (num.bad.space == 1){
+          peak.df <- peak.df[-c(peaks.to.check[p]),]
+          break
+        }
+      }
+      
+      # To avoid errors where removing a peak results in 0 bad spaces only fill
+      # in gap if nrow(peak.df) == number of injections - 1
+      
+      if(nrow(peak.df) == (num.of.injections - 1)){
+        
+        # Find the peak gap and calculate the expected migration time for the missing peak
+        
+        gap <- which(between(diff(peak.df[,2]), median.space.lower.lim, median.space.upper.lim) == FALSE)
+        
+        expected.peak.apex <- (peak.df[(gap[1] + 1),2] - peak.df[gap[1],2])/2 + peak.df[gap[1],2]
+        
+        # Find the nearest peak in the peak.df.fill data frame to the expected migration time
+        # Avoid duplicate peaks by not using exisitng peaks in peak.df
+        
+        peak.df.fill <- subset(peak.df.fill, !(peak.df.fill[,2] %in% peak.df[,2]))
+        
+        peak <- which.min(abs(peak.df.fill[,2] - expected.peak.apex))
+        peak.df <- rbind(peak.df, peak.df.fill[peak,])
+        
+        peak.df <- peak.df[order(peak.df[,2]),]
+        
+      }
+    }
+    
+    # Summarize peak.df data in is.peak.df
+    
+    if(s == 1){
+      is.peaks.df = peak.df
+    }else{
+      is.peaks.df = cbind(is.peaks.df, peak.df)  
+    }
+  }
+  
+  # Make a data frame containing the apex migration times of the internal standards
+  # to be used to filter metabolite peaks
+  
+  is.mt.df <- is.peaks.df[,seq(from = 2,
+                               to = ncol(is.peaks.df),
+                               by = 7)]
+  
+  # 7. Metabolite  Peak Detection, Integration, and Filtering ----
   
   ## Peak detection ---- 
   
@@ -289,7 +569,7 @@ for (d in 1:length(data.files)){
     # Determine the start, apex, and end of peaks.
     # Peaks are intensity features that have n consecutive increases followed by n consecutive decreases
     
-    rle.output <- eie.df[,m+1] %>%
+    rle.output <- eie.df[,m + num.of.is + 1] %>%
       diff() %>%
       sign() %>%
       rle()
@@ -370,18 +650,9 @@ for (d in 1:length(data.files)){
     
     # Determine the expected migration times of the metabolites
     
-    rmt.internal.standard <- mass.df$rmt.internal.standard[m]
+    rmt.internal.standard <- paste(mass.df$rmt.internal.standard[m], ".apex.seconds", sep = "")
     
-    is.mt.df <- read.table("csv Outputs/Internal Standard Migration Times.csv",
-                           header = TRUE,
-                           sep = ",",
-                           check.names = FALSE) %>%
-      as.data.frame()
-    
-    is.mt.df.start <- seq(from = 1, to = num.of.injections * length(data.files), by = num.of.injections)
-    is.mt.df.end <- seq(from = num.of.injections, to = num.of.injections * length(data.files), by = num.of.injections)
-    
-    is.mt.vec <- is.mt.df[c(is.mt.df.start[d]:is.mt.df.end[d]),rmt.internal.standard]
+    is.mt.vec <- is.mt.df[,rmt.internal.standard]
     
     expected.mt <- mass.df[m,(ncol(mass.df) - num.of.injections + 1):(ncol(mass.df))] %>%
       t() %>%
@@ -396,13 +667,13 @@ for (d in 1:length(data.files)){
     for (i in 1:num.of.injections){
       
       peaks <- peak.df %>%
-        filter(., peak.df[,2] <= (1 + rmt.tolerance) * expected.mt[i] * 60 & 
-                 peak.df[,2] >= (1 - rmt.tolerance) * expected.mt[i] * 60)
+        filter(., peak.df[,2] <= (1 + rmt.tolerance) * expected.mt[i] & 
+                 peak.df[,2] >= (1 - rmt.tolerance) * expected.mt[i])
       
       # If more than one peak is found choose the nearest one
       
       if(nrow(peaks) > 1){
-        peaks <- (peak.df[,2] - expected.mt[i] * 60) %>%
+        peaks <- (peak.df[,2] - expected.mt[i]) %>%
           abs() %>%
           which.min(.)
         peaks <- peak.df[peaks,]
@@ -412,7 +683,7 @@ for (d in 1:length(data.files)){
       
       if(nrow(peaks) == 0){
         
-        nearest.mt <- (eie.df$mt.seconds - expected.mt[i] * 60) %>%
+        nearest.mt <- (eie.df$mt.seconds - expected.mt[i]) %>%
           abs() %>%
           which.min(.)
         
@@ -458,13 +729,13 @@ for (d in 1:length(data.files)){
       for (r in duplicate.rows){
         
         peaks <- peak.df %>%
-          filter(., peak.df[,2] <= (1 + strict.rmt.tolerance) * expected.mt[r] * 60 & 
-                   peak.df[,2] >= (1 - strict.rmt.tolerance) * expected.mt[r] * 60)
+          filter(., peak.df[,2] <= (1 + strict.rmt.tolerance) * expected.mt[r] & 
+                   peak.df[,2] >= (1 - strict.rmt.tolerance) * expected.mt[r])
         
         # If more than one peak is found choose the nearest one
         
         if(nrow(peaks) > 1){
-          peaks <- (peak.df[,2] - expected.mt[r] * 60) %>%
+          peaks <- (peak.df[,2] - expected.mt[r]) %>%
             abs() %>%
             which.min(.)
           peaks <- peak.df[peaks,]
@@ -474,7 +745,7 @@ for (d in 1:length(data.files)){
         
         if(nrow(peaks) == 0){
           
-          nearest.mt <- (eie.df$mt.seconds - expected.mt[r] * 60) %>%
+          nearest.mt <- (eie.df$mt.seconds - expected.mt[r]) %>%
             abs() %>%
             which.min(.)
           
@@ -697,14 +968,12 @@ for (d in 1:length(data.files)){
     
     # Get the name of the interference from mass.df
     
-    interference <- mass.df$interference[m] 
+    interference <- paste(mass.df$interference[m], ".apex.seconds", sep = "")
     
     # Build an interference data frame since some are metabolites and some are internal standards
     
-    interference.df <- cbind(metabolite.peaks.df[,seq(2, ncol(metabolite.peaks.df), 7)],
-                             is.mt.df[is.mt.df.start[d]:is.mt.df.end[d],2:ncol(is.mt.df)] * 60)
-    
-    colnames(interference.df)[1:num.of.metabolites] <- mass.df$name
+    interference.df <- cbind(is.peaks.df[,seq(2, ncol(is.peaks.df), 7)],
+                             metabolite.peaks.df[,seq(2, ncol(metabolite.peaks.df), 7)])
     
     # See if there is any overlap between the metabolite peak and its interference 
     
@@ -721,20 +990,33 @@ for (d in 1:length(data.files)){
     }
   }
   
-  # 7. Plotting ----
+  # Combine internal standard and metabolite data frames for plotting
   
-  for (m in 1:num.of.metabolites){
+  peaks.df <- cbind(is.peaks.df, metabolite.peaks.df)
+  
+  # update comment data frame account for internal standards
+  
+  is.comment.df <- matrix(nrow = num.of.injections, ncol = nrow(is.df), "") %>%
+    as.data.frame()
+  
+  colnames(is.comment.df) <- is.df$name
+  
+  comment.df <- cbind(is.comment.df, comment.df)
+  
+  # 8. Plotting ----
+  
+  for (n in 1:length(name.vec)){
     
     ## Create annotation data frame ----
     
-    peak.mt.df <- metabolite.peaks.df[,seq(from = 2, to = ncol(metabolite.peaks.df), by = 7)]
+    peak.mt.df <- peaks.df[,seq(from = 2, to = ncol(peaks.df), by = 7)]
     
     # Avoid error caused by the same peak being allocated to two different injections
-    
-    ann.df <- data.frame("peak.number" = c(1:num.of.injections),
-                         "comment" = comment.df[,m],
-                         "peak.apex.seconds" = peak.mt.df[,m],
-                         "peak.height.counts" = eie.df[which(eie.df$mt.seconds %in% (peak.mt.df[,m])),m+1])
+      
+      ann.df <- data.frame("peak.number" = c(1:num.of.injections),
+                           "comment" = comment.df[,n],
+                           "peak.apex.seconds" = peak.mt.df[,n],
+                           "peak.height.counts" = eie.df[which(eie.df$mt.seconds %in% (peak.mt.df[,n])),n+1])
     
     max.peak.height = max(ann.df$peak.height.counts)
     
@@ -742,23 +1024,23 @@ for (d in 1:length(data.files)){
     
     pf.df <- data.frame("peak.number" = 1,
                         "mt.seconds" = eie.df[,1],
-                        "intensity" = eie.df[,m+1])
+                        "intensity" = eie.df[,n+1])
     
     mt.vec <- vector()
-    start.df <- metabolite.peaks.df[,seq(from = 1, to = ncol(metabolite.peaks.df), by = 7)]
-    end.df <- metabolite.peaks.df[,seq(from = 3, to = ncol(metabolite.peaks.df), by = 7)]
+    start.df <- peaks.df[,seq(from = 1, to = ncol(peaks.df), by = 7)]
+    end.df <- peaks.df[,seq(from = 3, to = ncol(peaks.df), by = 7)]
     
     for (i in 1:num.of.injections){
       
       # Create a migration time vector to track where peaks elute
       
-      if(comment.df[i,m] == ""){
-        mt.vec.temp <- eie.df$mt.seconds[between(eie.df$mt.seconds, start.df[i,m], end.df[i,m])]
+      if(comment.df[i,n] == ""){
+        mt.vec.temp <- eie.df$mt.seconds[between(eie.df$mt.seconds, start.df[i,n], end.df[i,n])]
         mt.vec <- append(mt.vec, mt.vec.temp)
         
         # Update peak.number in pf.df
         
-        pf.df$peak.number <- ifelse(pf.df$mt.seconds >= start.df[i,m], i, pf.df$peak.number)
+        pf.df$peak.number <- ifelse(pf.df$mt.seconds >= start.df[i,n], i, pf.df$peak.number)
         pf.df$peak.number <- as.factor(pf.df$peak.number)
       }else{
         next
@@ -772,9 +1054,9 @@ for (d in 1:length(data.files)){
     pf.df$baseline <- 0
     
     for (i in 1:num.of.injections){
-      if(comment.df[i,m] == ""){
-        lower.intensity <- min(c(metabolite.peaks.df[i, m * 7 - 3], metabolite.peaks.df[i, m * 7 - 1]))
-        pf.df$baseline <- ifelse(pf.df$mt.seconds >= start.df[i,m] & pf.df$mt.seconds <= end.df[i,m], lower.intensity, pf.df$baseline)
+      if(comment.df[i,n] == ""){
+        lower.intensity <- min(c(peaks.df[i, m * 7 - 3], peaks.df[i, m * 7 - 1]))
+        pf.df$baseline <- ifelse(pf.df$mt.seconds >= start.df[i,n] & pf.df$mt.seconds <= end.df[i,n], lower.intensity, pf.df$baseline)
       }else{
         next
       }
@@ -782,14 +1064,14 @@ for (d in 1:length(data.files)){
     
     ## Plot ----
     
-    name <- mass.df$name[m]
-    mz <- mass.df$mz[m]
+    name <- name.vec[n]
+    mz <- mz[n]
     
     ggplot(data = eie.df) +
-      geom_line(aes(x = mt.seconds/60, y = eie.df[,m+1]), colour = "grey50") +
+      geom_line(aes(x = mt.seconds/60, y = eie.df[,n+1]), colour = "grey50") +
       theme_classic() +
-      coord_cartesian(xlim = c(start.df[1,m]/60-1, end.df[num.of.injections,m]/60+1),
-                      ylim = c(min(eie.df$mt.seconds[(start.df[1,m] + 60):(end.df[num.of.injections,m] + 60)]), 1.2 * max.peak.height)) +
+      coord_cartesian(xlim = c(start.df[1,n]/60-1, end.df[num.of.injections,n]/60+1),
+                      ylim = c(min(eie.df$mt.seconds[(start.df[1,n] + 60):(end.df[num.of.injections,n] + 60)]), 1.2 * max.peak.height)) +
       scale_y_continuous(name = "Ion Counts",
                          labels = function(x) format(x, scientific = TRUE),
                          expand = c(0,0),
@@ -831,19 +1113,19 @@ for (d in 1:length(data.files)){
            width = 16,
            height = 9,
            plot = last_plot(),
-           path = paste("Metabolite_Plots/", mass.df$name[m], sep = ""))
+           path = paste("Plots/", name.vec[n], sep = ""))
     
   }
   
-  # 8. Export Data ----
+  # 9. Export Data ----
   
   ## Generate peak area data frame ----
   
   peak.area.df <- cbind("file.name" = c(data.files.name[d],2:num.of.injections),
                         "peak.number" = c(1:num.of.injections),
-                        metabolite.peaks.df[,seq(from = 7, to = ncol(metabolite.peaks.df), by = 7)])
+                        peaks.df[,seq(from = 7, to = ncol(peaks.df), by = 7)])
   peak.area.df$file.name[2:num.of.injections] <- ""
-  colnames(peak.area.df)[3:(num.of.metabolites+2)] <- mass.df$name
+  colnames(peak.area.df)[3:(length(name.vec) + 2)] <- name.vec
   
   # Update values to include <LOD and Interfered
   
@@ -861,9 +1143,9 @@ for (d in 1:length(data.files)){
   
   peak.mt.df <- cbind("file.name" = c(data.files.name[d],2:num.of.injections),
                       "peak.number" = c(1:num.of.injections),
-                      metabolite.peaks.df[,seq(from = 2, to = ncol(metabolite.peaks.df), by = 7)] / 60)
+                      peaks.df[,seq(from = 2, to = ncol(peaks.df), by = 7)] / 60)
   peak.mt.df$file.name[2:num.of.injections] <- ""
-  colnames(peak.mt.df)[3:(num.of.metabolites+2)] <- mass.df$name
+  colnames(peak.mt.df)[3:(length(name.vec) + 2)] <- name.vec
   
   # Update values to include <LOD and Interfered
   
