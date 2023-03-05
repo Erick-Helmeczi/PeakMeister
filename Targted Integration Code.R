@@ -1084,6 +1084,8 @@ for (d in 1:length(data.files)){
     
     ## Plot ----
     
+    mz <- c(is.df$mz, mass.df$mz)
+    
     name <- name.vec[n]
     mz <- mz[n]
     
