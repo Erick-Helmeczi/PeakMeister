@@ -46,6 +46,8 @@ for(n in 1:length(name.vec)){
 data.files <- list.files(path = "mzML Files",
                          full.names = TRUE)
 
+data.file.names <- list.files(path = "mzML Files")
+
 # Add a progress bar
 
 pb <- winProgressBar(title = "Peak Seeker", 
@@ -58,6 +60,8 @@ pb <- winProgressBar(title = "Peak Seeker",
 ## Initiate data file for loop ----
 
 for (d in 1:length(data.files)){
+  
+  print(paste(d, ". ", "Analyzing Data File: ", data.file.names[d], sep = ""))
 
   # 2. Prepare Data File ----
 
@@ -83,6 +87,8 @@ for (d in 1:length(data.files)){
   env_binding_unlock(run.data@assayData)
   
   # 3. Perform Mass Calibration ----
+  
+  print("Performing Mass Calibration")
   
   ## Find mz closest to expected reference masses with greatest intensity to use as the experimental accurate mass
   
@@ -238,18 +244,22 @@ for (d in 1:length(data.files)){
               "max.ref.mass", "min.ref.mass", "mz", "ref.mass", "s", "spectrum", "slope", "intercept",
               "left_line_points", "model_left", "model_right", "right_line_points"))
   
+  print("Mass Calibration Complete")
+  
   # 4. Extract Electropherograms ----
+  
+  print("Extracting Electropherograms")
   
   # Define mass error in ppm
   
-  mass.error = parameters.df$extraction.window.ppm[1]
+  mass.error.vec <- c(is.df$extraction.window.ppm, mass.df$extraction.window.ppm)
   
   # Create a matrix of minimum and maximum m/z values for each internal standard and metabolite
   
   mz <- c(is.df$mz, mass.df$mz)
   
-  min <- mz - mz * mass.error/1000000
-  max <- mz + mz * mass.error/1000000
+  min <- mz - mz * mass.error.vec/1000000
+  max <- mz + mz * mass.error.vec/1000000
   mzr <- matrix(c(min, max), ncol = 2)
   
   # Extract electropherograms
@@ -271,7 +281,11 @@ for (d in 1:length(data.files)){
     eie.df <- cbind(eie.df,temp.df)
   }
   
+  print("Extraction Complete")
+  
   # 5. Smooth Intensity Vectors ----
+  
+  print("Smoothing Electropherograms")
   
   for (n in 2:length(name.vec)){ 
     Smooth <- with(eie.df, 
@@ -285,9 +299,13 @@ for (d in 1:length(data.files)){
   # Clean-up environment
   
   rm(list = c("electropherograms", "mzr", "Smooth", "temp.df", "max", "min", 
-              "n", "mass.error"))
+              "n", "mass.error.vec"))
+  
+  print("Electropherograms Smoothing Complete")
   
   # 6. Internal Standard Peak Detection, Integration, and Filtering ----
+  
+  print("Performing Peak Picking and Filtering for Internal Standards")
   
   ## Peak detection ---- 
   
@@ -556,20 +574,20 @@ for (d in 1:length(data.files)){
                                to = ncol(is.peaks.df),
                                by = 7)]
   
+  print("Peak Picking and Filtering for Internal Standards Complete")
+  
   # 7. Metabolite  Peak Detection, Integration, and Filtering ----
+  
+  print("Performing Peak Picking and Filtering for Analytes ")
   
   ## Peak detection ---- 
   
-  # Define the minimum number of consecutive increasing and decreasing points a peak must have
-  
-  n <- parameters.df$required.points.for.peak.picking[1]
-  
-  for (m in 1:num.of.metabolites){
+  for (m in (num.of.is + 1):length(name.vec)){
     
     # Determine the start, apex, and end of peaks.
     # Peaks are intensity features that have n consecutive increases followed by n consecutive decreases
     
-    rle.output <- eie.df[,m + num.of.is + 1] %>%
+    rle.output <- eie.df[,m + 1] %>%
       diff() %>%
       sign() %>%
       rle()
@@ -609,7 +627,7 @@ for (d in 1:length(data.files)){
     ## Filter peaks by peak width ----
     # Define a minimum peak width cut off in seconds
     
-    min.width.cut.off <- mass.df$minimim.peak.width.seconds[m]
+    min.width.cut.off <- mass.df$minimim.peak.width.seconds[m - num.of.is]
     
     peak.df <- subset(peak.df, (peak.df$end - peak.df$start) >= min.width.cut.off)
     
@@ -634,13 +652,13 @@ for (d in 1:length(data.files)){
     
     # rename peak.df columns
     
-    colnames.vector = c(paste(mass.df[m,1], "start.seconds", sep = "."),
-                        paste(mass.df[m,1], "apex.seconds", sep = "."),
-                        paste(mass.df[m,1], "end.seconds", sep = "."),
-                        paste(mass.df[m,1], "start.intensity", sep = "."),
-                        paste(mass.df[m,1], "apex.intensity", sep = "."),
-                        paste(mass.df[m,1], "end.intensity", sep = "."),
-                        paste(mass.df[m,1], "peak.area", sep = "."))
+    colnames.vector = c(paste(name.vec[m], "start.seconds", sep = "."),
+                        paste(name.vec[m], "apex.seconds", sep = "."),
+                        paste(name.vec[m], "end.seconds", sep = "."),
+                        paste(name.vec[m], "start.intensity", sep = "."),
+                        paste(name.vec[m], "apex.intensity", sep = "."),
+                        paste(name.vec[m], "end.intensity", sep = "."),
+                        paste(name.vec[m], "peak.area", sep = "."))
     
     colnames(peak.df) <- colnames.vector
     
@@ -650,11 +668,11 @@ for (d in 1:length(data.files)){
     
     # Determine the expected migration times of the metabolites
     
-    rmt.internal.standard <- paste(mass.df$rmt.internal.standard[m], ".apex.seconds", sep = "")
+    rmt.internal.standard <- paste(mass.df$rmt.internal.standard[m - num.of.is], ".apex.seconds", sep = "")
     
     is.mt.vec <- is.mt.df[,rmt.internal.standard]
     
-    expected.mt <- mass.df[m,(ncol(mass.df) - num.of.injections + 1):(ncol(mass.df))] %>%
+    expected.mt <- mass.df[m - num.of.is,(ncol(mass.df) - num.of.injections + 1):(ncol(mass.df))] %>%
       t() %>%
       as.vector()
     
@@ -662,7 +680,7 @@ for (d in 1:length(data.files)){
     
     # Filter peak.df for peaks within rmt tolerance
     
-    rmt.tolerance <- mass.df$rmt.tolerance.percent[m] / 100
+    rmt.tolerance <- mass.df$rmt.tolerance.percent[m - num.of.is] / 100
     
     for (i in 1:num.of.injections){
       
@@ -775,7 +793,7 @@ for (d in 1:length(data.files)){
     
     # Get peak space tolerance
     
-    median.space.tol <- mass.df$peak.space.tolerance.percent[m] / 100
+    median.space.tol <- mass.df$peak.space.tolerance.percent[m - num.of.is] / 100
     
     # Calculate median peak space
     
@@ -895,7 +913,7 @@ for (d in 1:length(data.files)){
     
     # Summarize filtered.peak.df data in metabolite.peak.df
     
-    if(m == 1){
+    if(m == (num.of.is + 1)){
       metabolite.peaks.df = filtered.peaks.df
     }else{
       metabolite.peaks.df = cbind(metabolite.peaks.df, filtered.peaks.df)  
@@ -935,7 +953,7 @@ for (d in 1:length(data.files)){
     # Calculate the noise in each region
     
     for (r in 1:length(region.start)){
-      temp.noise <- eie.df[region.start[r]:region.end[r], m + 1]
+      temp.noise <- eie.df[region.start[r]:region.end[r], m + num.of.is + 1]
       noise.vec[r] <- noise_calculation(temp.noise)
     }
 
@@ -1003,15 +1021,17 @@ for (d in 1:length(data.files)){
   
   comment.df <- cbind(is.comment.df, comment.df)
   
+  print("Peak Picking and Filtering for Analytes Complete")
+  
   # 8. Plotting ----
+  
+  print("Plotting Electropherograms")
   
   for (n in 1:length(name.vec)){
     
     ## Create annotation data frame ----
     
     peak.mt.df <- peaks.df[,seq(from = 2, to = ncol(peaks.df), by = 7)]
-    
-    # Avoid error caused by the same peak being allocated to two different injections
       
       ann.df <- data.frame("peak.number" = c(1:num.of.injections),
                            "comment" = comment.df[,n],
@@ -1055,7 +1075,7 @@ for (d in 1:length(data.files)){
     
     for (i in 1:num.of.injections){
       if(comment.df[i,n] == ""){
-        lower.intensity <- min(c(peaks.df[i, m * 7 - 3], peaks.df[i, m * 7 - 1]))
+        lower.intensity <- min(c(peaks.df[i, n * 7 - 3], peaks.df[i, n * 7 - 1]))
         pf.df$baseline <- ifelse(pf.df$mt.seconds >= start.df[i,n] & pf.df$mt.seconds <= end.df[i,n], lower.intensity, pf.df$baseline)
       }else{
         next
@@ -1117,6 +1137,8 @@ for (d in 1:length(data.files)){
     
   }
   
+  print("Plotting Complete")
+  
   # 9. Export Data ----
   
   ## Generate peak area data frame ----
@@ -1166,7 +1188,10 @@ for (d in 1:length(data.files)){
   
   # Delete temporary mzml file
   
-  file.remove(paste(data.files[d], "temp", sep = "_")) 
+  file.remove(paste(data.files[d], "temp", sep = "_"))
+  
+  print(paste("Completed Analysis of Data File: ", data.file.names[d], sep = ""))
+  print("")
   
 }
 
