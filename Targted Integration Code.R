@@ -488,9 +488,38 @@ for (d in 1:length(data.files)){
       }
       
       peak <- which.min(abs(peak.df.fill[,2] - expected.peak.apex))
-      peak.df <- rbind(peak.df, peak.df.fill[peak,])
       
-      peak.df <- peak.df[order(peak.df[,2]),]
+      # If the nearest peak is too far from the expected migration time use a place holder
+      
+      if (abs(peak.df.fill[peak,2] - expected.peak.apex) > (median.space / 2)){
+        
+        nearest.mt <- (eie.df$mt.seconds - expected.peak.apex) %>%
+          abs() %>%
+          which.min(.)
+        
+        nearest.mt <- eie.df[nearest.mt,1]
+        
+        peaks <- data.frame(eie.df[nearest.mt,1],
+                            eie.df[nearest.mt,1],
+                            eie.df[nearest.mt,1],
+                            eie.df[nearest.mt,s + 1],
+                            eie.df[nearest.mt,s + 1],
+                            eie.df[nearest.mt,s + 1],
+                            0)
+        
+        colnames(peaks) <- colnames(peak.df)
+        
+        peak.df <- rbind(peak.df, peaks)
+        
+        peak.df <- peak.df[order(peak.df[,2]),]
+        
+      }else{
+        
+        peak.df <- rbind(peak.df, peak.df.fill[peak,])
+        
+        peak.df <- peak.df[order(peak.df[,2]),]
+        
+      }
       
       # Remove bad peak
       
@@ -578,7 +607,7 @@ for (d in 1:length(data.files)){
   
   # 7. Metabolite  Peak Detection, Integration, and Filtering ----
   
-  print("Performing Peak Picking and Filtering for Analytes ")
+  print("Performing Peak Picking and Filtering for Analytes")
   
   ## Peak detection ---- 
   
@@ -705,12 +734,14 @@ for (d in 1:length(data.files)){
           abs() %>%
           which.min(.)
         
+        nearest.mt <- eie.df[nearest.mt,1]
+        
         peaks <- data.frame(eie.df[nearest.mt,1],
                             eie.df[nearest.mt,1],
                             eie.df[nearest.mt,1],
-                            eie.df[nearest.mt,i + 1],
-                            eie.df[nearest.mt,i + 1],
-                            eie.df[nearest.mt,i + 1],
+                            eie.df[nearest.mt,m + 1],
+                            eie.df[nearest.mt,m + 1],
+                            eie.df[nearest.mt,m + 1],
                             0)
         
         colnames(peaks) <- colnames(peak.df)
@@ -767,12 +798,14 @@ for (d in 1:length(data.files)){
             abs() %>%
             which.min(.)
           
+          nearest.mt <- eie.df[nearest.mt,1]
+          
           peaks <- data.frame(eie.df[nearest.mt,1],
                               eie.df[nearest.mt,1],
                               eie.df[nearest.mt,1],
-                              eie.df[nearest.mt,r + 1],
-                              eie.df[nearest.mt,r + 1],
-                              eie.df[nearest.mt,r + 1],
+                              eie.df[nearest.mt,m + 1],
+                              eie.df[nearest.mt,m + 1],
+                              eie.df[nearest.mt,m + 1],
                               0)
           
           colnames(peaks) <- colnames(peak.df)
@@ -947,7 +980,7 @@ for (d in 1:length(data.files)){
     # Define a function to calculate noise
     
     noise_calculation <- function(temp.noise) {
-      mean(temp.noise) + sd(temp.noise)
+      mean(temp.noise) + mass.df$snr.threshold[m] * sd(temp.noise)
     }
     
     # Calculate the noise in each region
@@ -957,7 +990,7 @@ for (d in 1:length(data.files)){
       noise.vec[r] <- noise_calculation(temp.noise)
     }
 
-    # Define the noise as the median noise region
+    # Define the noise as the 20th percentile noise region
     
     noise <- noise.vec %>%
       sort()
@@ -966,7 +999,7 @@ for (d in 1:length(data.files)){
     
     peak.area.df <- metabolite.peaks.df[,seq(7, ncol(metabolite.peaks.df), 7)]
     
-    comment.df[,m] <- ifelse(peak.area.df[,m] < (mass.df$snr.threshold[m] * noise), "<LOD", comment.df[,m])
+    comment.df[,m] <- ifelse(peak.area.df[,m] < noise, "<LOD", comment.df[,m])
     
     ### Annotate injections that are not detected
     
