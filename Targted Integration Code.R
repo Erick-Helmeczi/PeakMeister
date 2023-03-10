@@ -30,7 +30,12 @@ num.of.is <- nrow(is.df)
 
 num.of.injections <- parameters.df$number.of.injections[1]
 
-# Generate plot folders for each internal standard and metabolite
+# Create a "Plots" folder to store figures
+
+dir.create(path = "Plots",
+           showWarnings = FALSE)
+
+# Generate plot sub-folders for each internal standard and metabolite
 
 name.vec <- c(is.df$name, mass.df$name)
 
@@ -70,6 +75,8 @@ for (d in 1:length(data.files)){
   file.copy(data.files[d], to = paste(data.files[d], "temp", sep = "_"))
   
   # Read in the copied data file
+  
+  print("Reading Data File")
 
   run.data <- readMSData(
     file = paste(data.files[d], "temp", sep = "_"),
@@ -81,6 +88,8 @@ for (d in 1:length(data.files)){
     cache. = 0,
     mode =  "inMemory"
   )
+  
+  print("File Reading Complete")
   
   # Unlock "assayData" environment 
   
@@ -291,7 +300,7 @@ for (d in 1:length(data.files)){
     Smooth <- with(eie.df, 
                    ksmooth(x = mt.seconds, 
                            y = eie.df[,n], 
-                           kernel = "normal", 
+                           kernel = parameters.df$eie.smoothing.kernal[1], 
                            bandwidth = parameters.df$eie.smoothing.strength[1]))
     eie.df[,n] <- Smooth[["y"]]
   }
@@ -299,7 +308,7 @@ for (d in 1:length(data.files)){
   # Clean-up environment
   
   rm(list = c("electropherograms", "mzr", "Smooth", "temp.df", "max", "min", 
-              "n", "mass.error.vec"))
+              "n", "mass.error.vec", "run.data"))
   
   print("Electropherograms Smoothing Complete")
   
@@ -496,8 +505,6 @@ for (d in 1:length(data.files)){
         nearest.mt <- (eie.df$mt.seconds - expected.peak.apex) %>%
           abs() %>%
           which.min(.)
-        
-        nearest.mt <- eie.df[nearest.mt,1]
         
         peaks <- data.frame(eie.df[nearest.mt,1],
                             eie.df[nearest.mt,1],
@@ -734,8 +741,6 @@ for (d in 1:length(data.files)){
           abs() %>%
           which.min(.)
         
-        nearest.mt <- eie.df[nearest.mt,1]
-        
         peaks <- data.frame(eie.df[nearest.mt,1],
                             eie.df[nearest.mt,1],
                             eie.df[nearest.mt,1],
@@ -753,6 +758,34 @@ for (d in 1:length(data.files)){
         filtered.peaks.df <- rbind(filtered.peaks.df, peaks)
       }
     }
+    
+    ### Filter peaks outside of run time limits ----
+    
+    # Set a place holder for peaks where the expected migration time > total run time
+    
+    total.run.time <- eie.df$mt.seconds[nrow(eie.df)]
+    
+    late.peaks <- (expected.mt > total.run.time) %>%
+      which()
+    
+    # Find migration times to use as placeholders that do not belong to other identified peaks
+    
+    mt <- tail(eie.df$mt.seconds, n = 15)
+    
+    mt <- mt[!(mt %in% filtered.peaks.df[,2])]
+    
+    for (i in late.peaks){
+      mt.temp <- mt[i]
+      intensity.temp <- mt
+      filtered.peaks.df[i,] <- c(mt.temp,
+                                 mt.temp,
+                                 mt.temp,
+                                 eie.df[which(eie.df$mt.seconds == mt.temp) ,m + 1],
+                                 eie.df[which(eie.df$mt.seconds == mt.temp) ,m + 1],
+                                 eie.df[which(eie.df$mt.seconds == mt.temp) ,m + 1],
+                                 0)
+    }
+    
     
     ### Filter duplicated peaks ----
     
@@ -798,8 +831,6 @@ for (d in 1:length(data.files)){
             abs() %>%
             which.min(.)
           
-          nearest.mt <- eie.df[nearest.mt,1]
-          
           peaks <- data.frame(eie.df[nearest.mt,1],
                               eie.df[nearest.mt,1],
                               eie.df[nearest.mt,1],
@@ -838,6 +869,14 @@ for (d in 1:length(data.files)){
     
     median.space.lower.lim <- median.space - median.space * median.space.tol
     median.space.upper.lim <- median.space + median.space * median.space.tol
+    
+    # Check if peaks migrate within the tolerance limits
+    
+    peak.space.tol.check <- between(diff(filtered.peaks.df[,2]), median.space.lower.lim, median.space.upper.lim)
+    
+    # Do not include peaks where expected migration time > total run time
+    
+    peak.space.tol.check <- peak.space.tol.check[-c(late.peaks - 1)]
     
     # Check if peaks migrate within the tolerance limits
     
@@ -916,9 +955,9 @@ for (d in 1:length(data.files)){
           peaks <- data.frame(eie.df[nearest.mt,1],
                               eie.df[nearest.mt,1],
                               eie.df[nearest.mt,1],
-                              eie.df[nearest.mt,i + 1],
-                              eie.df[nearest.mt,i + 1],
-                              eie.df[nearest.mt,i + 1],
+                              eie.df[nearest.mt,m + 1],
+                              eie.df[nearest.mt,m + 1],
+                              eie.df[nearest.mt,m + 1],
                               0)
           
           colnames(peaks) <- colnames(peak.df)
