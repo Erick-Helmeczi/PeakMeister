@@ -620,52 +620,74 @@ for (d in 1:length(data.files)){
   
   for (m in (num.of.is + 1):length(name.vec)){
     
-    # Determine the start, apex, and end of peaks.
-    # Peaks are intensity features that have n consecutive increases followed by n consecutive decreases
+    peak.df <- data.frame()
+      
+    # Determine the start, apex, and end of peaks. Use the user defined value "n" to detect peaks.
+    # If n results in fewer peaks then injection, decrease n by 1 and repeat
     
-    rle.output <- eie.df[,m + 1] %>%
-      diff() %>%
-      sign() %>%
-      rle()
-    
-    consecutive.runs <- which(rle.output$lengths > n & rle.output$values == 1)
-    consecutive.runs <- subset(consecutive.runs, (consecutive.runs + 1) %in% (which(rle.output$lengths > n)) == TRUE)
-    
-    run.lengths <- cumsum(rle.output$lengths) + 1
-    
-    start <- eie.df$mt.seconds[run.lengths[consecutive.runs - 1]]
-    apex <- eie.df$mt.seconds[run.lengths[consecutive.runs]]
-    end <- eie.df$mt.seconds[run.lengths[consecutive.runs + 1]]
-    
-    # I will also add intensity values here as well
-    
-    start.intensity <- eie.df[run.lengths[consecutive.runs - 1], (m+1)]
-    apex.intensity <- eie.df[run.lengths[consecutive.runs], (m+1)]
-    end.intensity <- eie.df[run.lengths[consecutive.runs + 1], (m+1)]
-    
-    # Account for peaks that start immediately during the analysis
-    
-    if(length(start) != length(apex)){
-      start <- append(start, 0, 0)
-      start.intensity <- append(start.intensity, 0, 0)
+    while (nrow(peak.df) < num.of.injections){
+      
+      n <- parameters.df$required.points.for.peak.picking[1]
+      
+      rle.output <- eie.df[,m + 1] %>%
+        diff() %>%
+        sign() %>%
+        rle()
+      
+      consecutive.runs <- which(rle.output$lengths > n & rle.output$values == 1)
+      consecutive.runs <- subset(consecutive.runs, (consecutive.runs + 1) %in% (which(rle.output$lengths > n)) == TRUE)
+      
+      run.lengths <- cumsum(rle.output$lengths) + 1
+      
+      start <- eie.df$mt.seconds[run.lengths[consecutive.runs - 1]]
+      apex <- eie.df$mt.seconds[run.lengths[consecutive.runs]]
+      end <- eie.df$mt.seconds[run.lengths[consecutive.runs + 1]]
+      
+      # I will also add intensity values here as well
+      
+      start.intensity <- eie.df[run.lengths[consecutive.runs - 1], (m+1)]
+      apex.intensity <- eie.df[run.lengths[consecutive.runs], (m+1)]
+      end.intensity <- eie.df[run.lengths[consecutive.runs + 1], (m+1)]
+      
+      # Account for peaks that start immediately during the analysis
+      
+      if(length(start) != length(apex)){
+        start <- append(start, 0, 0)
+        start.intensity <- append(start.intensity, 0, 0)
+      }
+      
+      # Create a data frame containing the start, apex, and end migration times of each 
+      # peak in addition to required intensities for FWHM calculations
+      
+      peak.df <- data.frame(start,
+                            apex,
+                            end,
+                            start.intensity,
+                            apex.intensity,
+                            end.intensity)
+      
+      n <- n - 1
+      
     }
     
-    # Create a data frame containing the start, apex, and end migration times of each 
-    # peak in addition to required intensities for FWHM calculations
-    
-    peak.df <- data.frame(start,
-                          apex,
-                          end,
-                          start.intensity,
-                          apex.intensity,
-                          end.intensity)
-    
     ## Filter peaks by peak width ----
-    # Define a minimum peak width cut off in seconds
+    
+    # Define a minimum peak width cut off in seconds. Remove peaks with a width <= cutoff
+    # If the cutoff results in fewer peaks than injections, decrease cutoff by 1 and repeat
     
     min.width.cut.off <- mass.df$minimim.peak.width.seconds[m - num.of.is]
     
-    peak.df <- subset(peak.df, (peak.df$end - peak.df$start) >= min.width.cut.off)
+    peak.df.trim <- subset(peak.df, (peak.df$end - peak.df$start) >= min.width.cut.off)
+    
+    while (nrow(peak.df.trim) < num.of.injections){
+      
+      min.width.cut.off <- min.width.cut.off - 1
+      
+      peak.df.trim <- subset(peak.df, (peak.df$end - peak.df$start) >= min.width.cut.off)
+      
+    }
+    
+    peak.df <- peak.df.trim
     
     ## Integrate peaks ----
     
@@ -1165,7 +1187,8 @@ for (d in 1:length(data.files)){
       geom_line(aes(x = mt.seconds/60, y = eie.df[,n+1]), colour = "grey50") +
       theme_classic() +
       coord_cartesian(xlim = c(start.df[1,n]/60-1, end.df[num.of.injections,n]/60+1),
-                      ylim = c(min(eie.df$mt.seconds[(start.df[1,n] + 60):(end.df[num.of.injections,n] + 60)]), 1.2 * max.peak.height)) +
+                      ylim = c(min(eie.df[(which(eie.df$mt.seconds == start.df[1,n]) - 60) : (which(eie.df$mt.seconds == end.df[1,n]) + 60),n + 1]) / 3,
+                               1.2 * max.peak.height)) +
       scale_y_continuous(name = "Ion Counts",
                          labels = function(x) format(x, scientific = TRUE),
                          expand = c(0,0),
