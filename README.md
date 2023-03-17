@@ -1,8 +1,9 @@
-# MSI-CE-MS-Data-Preprocessing
+# Peak Seeker
+# Software for Automating MSI-CE-MS Data Preprocessing
 
 ### Description
 
-The motivation behind this program was to develop software that can reduce the burden, cost, and time required to manually process multisegment injection-capillary electrophoresis-mass spectrometry (MSI-CE-MS) data. While, MSI-CE-MS allows for the rapid acquisiton of metabolomic data, we were unable to find data processing software which could be tailored to the unique output of this technique. Thus, the key objective of this software is to take raw (.mzML) data files and user supplied conditons, such as a targted mass-to-charge list, and output plots and tables of peak areas and migration times. 
+The motivation behind this program was to develop software that can reduce the burden, cost, and time required to manually preprocess multisegment injection-capillary electrophoresis-mass spectrometry (MSI-CE-MS) data. While MSI-CE-MS allows for the rapid acquisiton of metabolomic data, we were unable to find data processing software which could be tailored to the unique output of this technique. Thus, the key objective of this software is to take raw (.mzML) data files and user supplied conditons, such as a targted mass-to-charge list, and output plots and tables of summarized peak areas and migration times. 
 
 ### Current Features
 
