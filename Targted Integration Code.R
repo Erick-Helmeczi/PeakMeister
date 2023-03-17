@@ -296,13 +296,16 @@ for (d in 1:length(data.files)){
   
   print("Smoothing Electropherograms")
   
-  for (n in 2:length(name.vec)){ 
+  smoothing.kernal.vec <- c(is.df$smoothing.kernal, mass.df$smoothing.kernal)
+  smoothing.strength.vec <- c(is.df$smoothing.strength, mass.df$smoothing.strength)
+  
+  for (n in 1:length(name.vec)){ 
     Smooth <- with(eie.df, 
                    ksmooth(x = mt.seconds, 
-                           y = eie.df[,n], 
-                           kernel = mass.df$smoothing.kernal[n - 1], 
-                           bandwidth = mass.df$smoothing.strength[n - 1]))
-    eie.df[,n] <- Smooth[["y"]]
+                           y = eie.df[,n + 1], 
+                           kernel = smoothing.kernal.vec[n], 
+                           bandwidth = smoothing.strength.vec[n]))
+    eie.df[,n + 1] <- Smooth[["y"]]
   }
   
   # Clean-up environment
