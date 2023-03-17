@@ -300,8 +300,8 @@ for (d in 1:length(data.files)){
     Smooth <- with(eie.df, 
                    ksmooth(x = mt.seconds, 
                            y = eie.df[,n], 
-                           kernel = parameters.df$eie.smoothing.kernal[1], 
-                           bandwidth = parameters.df$eie.smoothing.strength[1]))
+                           kernel = mass.df$smoothing.kernal[n - 1], 
+                           bandwidth = mass.df$smoothing.strength[n - 1]))
     eie.df[,n] <- Smooth[["y"]]
   }
   
