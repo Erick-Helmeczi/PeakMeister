@@ -7,9 +7,10 @@ The motivation behind this program was to develop software that can reduce the b
 
 ### Current Features
 
-1. The software allows users to process their data with minimal R experience as all parameters used within the program can be changed within excel sheets accompanying the project. 
-2. Mass calibration to lock masses is performed to minimize mass varibaility which commonly occurs in time-of-flight mass spectrometers expecially during long studies. 
-3. Extracted ion electropherograms (EIEs) are extracted from the calibrated data files using the user supplied mass-to-charge list and smoothed.
+1. The software allows users to process their data with minimal R experience as all required parameters can be adjusted within an excel sheet.
+2. Mass calibration to lock masses is performed to minimize mass varibaility which commonly occurs in time-of-flight mass spectrometers, expecially during long studies. 
+3. Extracted ion electropherograms (EIEs) are extracted from the calibrated data files using the user supplied mass-to-charge list and then smoothed.
 4. Peaks are detected and filtered using user defined parameters.
-5. Plots are generated and saved for ursers to review to ensure correct peak peaking and integration occured. 
+5. Plots are generated and saved for users to review to ensure correct peak peaking and integration occured. 
 6. Peak area and migration time data is further summarized in csv files.
+7. A widnows progress bar and print statements have been implimented so users can have an estimate of completetion. 
