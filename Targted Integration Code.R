@@ -1073,6 +1073,11 @@ for (d in 1:length(data.files)){
   
   ### Filter interfered peaks ----
   
+  # Build an interference data frame since some are metabolites and some are internal standards
+  
+  interference.df <- cbind(is.peaks.df[,seq(2, ncol(is.peaks.df), 7)],
+                           metabolite.peaks.df[,seq(2, ncol(metabolite.peaks.df), 7)])
+  
   for (m in 1:num.of.metabolites){
     
     # Skip metabolites with no reported interference
@@ -1081,26 +1086,27 @@ for (d in 1:length(data.files)){
       next
     }
     
-    # Get the name of the interference from mass.df
+    # Get the names of the interferences from mass.df
     
-    interference <- paste(mass.df$interference[m], ".apex.seconds", sep = "")
+    interferences <- strsplit(mass.df$interference[m], ", ") %>%
+      unlist()
     
-    # Build an interference data frame since some are metabolites and some are internal standards
-    
-    interference.df <- cbind(is.peaks.df[,seq(2, ncol(is.peaks.df), 7)],
-                             metabolite.peaks.df[,seq(2, ncol(metabolite.peaks.df), 7)])
-    
-    # See if there is any overlap between the metabolite peak and its interference 
-    
-    metabolite.name <- paste(mass.df$name[m], ".apex.seconds", sep = "")
-    
-    for (i in 1:num.of.injections){
-      for (j in 1:num.of.injections){
-        
-        diff.temp <- (metabolite.peaks.df[i,metabolite.name] - interference.df[j,interference]) %>%
-          abs() 
-        
-        comment.df[i,mass.df$name[m]] <- ifelse(diff.temp < mass.df$interference.comigration.threshold.seconds[m], "Interfered", comment.df[i,mass.df$name[m]])
+    for (k in 1:length(interference)){
+      
+      interference <- paste(interferences[k], ".apex.seconds", sep = "")
+      
+      # See if there is any overlap between the metabolite peak and its interference 
+      
+      metabolite.name <- paste(mass.df$name[m], ".apex.seconds", sep = "")
+      
+      for (i in 1:num.of.injections){
+        for (j in 1:num.of.injections){
+          
+          diff.temp <- (metabolite.peaks.df[i,metabolite.name] - interference.df[j,interference]) %>%
+            abs() 
+          
+          comment.df[i,mass.df$name[m]] <- ifelse(diff.temp < mass.df$interference.comigration.threshold.seconds[m], "Interfered", comment.df[i,mass.df$name[m]])
+        }
       }
     }
   }
