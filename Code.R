@@ -621,30 +621,57 @@ for (d in 1:length(data.files)){
   
   correction.df <- is.mt.df[,c(1,3,5,4,6,8,2,7,9,10,11)]
   
-  # Compute RMT values
+  # Compute RMT values for RMTs <= 1
   
-  correction.rmt.df <- correction.df
-  correction.mt.diff.df <-  correction.df
+  is.rmt.below.df <- correction.df
+  is.mt.diff.df <-  correction.df
   
   for (c in 2:ncol(correction.df)){
-    correction.rmt.df[,c] <- correction.df[,c]/correction.df[,(c - 1)]
-    correction.mt.diff.df[,c] <- correction.df[,c] - correction.df[,(c - 1)]
+    is.rmt.below.df[,c] <- correction.df[,(c - 1)]/correction.df[,c]
+    is.mt.diff.df[,c] <- correction.df[,c] - correction.df[,(c - 1)]
   }
   
   # This is stored for reference during the first data file
   
   if (d == 1){
-    reference.rmt.df <- correction.rmt.df
+    reference.rmt.df.below <-  is.rmt.below.df
   }
   
-  # Compute correction values
+  # Compute correction values for rmts < 1
   
-  correction.values.df <- correction.rmt.df - reference.rmt.df
-  correction.values.df <- correction.values.df / correction.mt.diff.df
+  correction.values.below.df <- (is.rmt.below.df - reference.rmt.df.below) / is.mt.diff.df
+  
+  # Compute RMT values for RMts > 1
+  
+  is.rmt.above.df <- correction.df
+  
+  for (c in 1:(ncol(correction.df) - 1)){
+    is.rmt.above.df[,c] <- correction.df[,(c + 1)]/correction.df[,c]
+    is.mt.diff.df[,c] <- correction.df[,(c + 1)] - correction.df[,c]
+  }
+  
+  # This is stored for reference during the first data file
+  
+  if (d == 1){
+    reference.rmt.df.above <-  is.rmt.above.df
+  }
+  
+  # Compute correction values for rmts > 1
+  
+  correction.values.above.df <- (is.rmt.above.df - reference.rmt.df.above) / is.mt.diff.df
   
   # Assign 0 to first column
   
-  correction.values.df[,1] <- 0
+  correction.values.above.df[,1] <- 0
+  correction.values.below.df[,1] <- 0
+  
+  # Remove NaN and Inf
+  
+  correction.values.above.df[sapply(correction.values.above.df, is.infinite)] <- 0
+  correction.values.below.df[sapply(correction.values.below.df, is.infinite)] <- 0
+  
+  correction.values.above.df[sapply(correction.values.above.df, is.na)] <- 0
+  correction.values.below.df[sapply(correction.values.below.df, is.na)] <- 0
   
   # 8. Metabolite  Peak Detection, Integration, and Filtering ----
   
@@ -773,22 +800,26 @@ for (d in 1:length(data.files)){
     #### Apply relative migration time correction ----
     
     # correction only applies to compounds between first and last internal standard
-  
-    if(rmts[1] <= 1){
-      
-      correction.vector <- correction.values.df[,rmt.internal.standard] * (is.mt.df[,rmt.internal.standard] - expected.mt)
-      
-      expected.mt <- (rmts + correction.vector) * is.mt.vec
-      
-    }
     
-    column.index <- which(colnames(correction.values.df) == rmt.internal.standard)
-    
-    if(rmts[1] > 1 & column.index < ncol(correction.values.df)){
+    for(i in 1:num.of.injections){
       
-      correction.vector <- correction.values.df[,(column.index + 1)] * (is.mt.df[,rmt.internal.standard] - expected.mt)
+      if(rmts[i] <= 1){
+        
+        correction.value <- correction.values.below.df[,rmt.internal.standard][i] * (is.mt.df[,rmt.internal.standard][i] - expected.mt[i])
+        
+        expected.mt[i] <- (rmts[i] + correction.value) * is.mt.vec[i]
+        
+      }
       
-      expected.mt <- (rmts + correction.vector) * is.mt.vec
+      column.index <- which(colnames(correction.values.above.df) == rmt.internal.standard)
+      
+      if(rmts[i] > 1 & column.index < ncol(correction.values.above.df)){
+        
+        correction.value <- correction.values.above.df[,(column.index + 1)][i] * (expected.mt[i] - is.mt.df[,rmt.internal.standard][i])
+        
+        expected.mt[i] <- (rmts[i] + correction.value) * is.mt.vec[i]
+      }
+      
     }
     
     # Filter peak.df for peaks within rmt tolerance
