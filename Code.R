@@ -615,7 +615,38 @@ for (d in 1:length(data.files)){
   
   print("Peak Picking and Filtering for Internal Standards Complete")
   
-  # 7. Metabolite  Peak Detection, Integration, and Filtering ----
+  # 7. Build Relative Migration Time Correction Model ----
+  
+  # Reorder columns from fastest to slowest internal standards
+  
+  correction.df <- is.mt.df[,c(1,3,5,4,6,8,2,7,9,10,11)]
+  
+  # Compute RMT values
+  
+  correction.rmt.df <- correction.df
+  correction.mt.diff.df <-  correction.df
+  
+  for (c in 2:ncol(correction.df)){
+    correction.rmt.df[,c] <- correction.df[,c]/correction.df[,(c - 1)]
+    correction.mt.diff.df[,c] <- correction.df[,c] - correction.df[,(c - 1)]
+  }
+  
+  # This is stored for reference during the first data file
+  
+  if (d == 1){
+    reference.rmt.df <- correction.rmt.df
+  }
+  
+  # Compute correction values
+  
+  correction.values.df <- correction.rmt.df - reference.rmt.df
+  correction.values.df <- correction.values.df / correction.mt.diff.df
+  
+  # Assign 0 to first column
+  
+  correction.values.df[,1] <- 0
+  
+  # 8. Metabolite  Peak Detection, Integration, and Filtering ----
   
   print("Performing Peak Picking and Filtering for Analytes")
   
@@ -733,11 +764,32 @@ for (d in 1:length(data.files)){
     
     is.mt.vec <- is.mt.df[,rmt.internal.standard]
     
-    expected.mt <- mass.df[m - num.of.is,(ncol(mass.df) - num.of.injections + 1):(ncol(mass.df))] %>%
+    rmts <- mass.df[m - num.of.is,(ncol(mass.df) - num.of.injections + 1):(ncol(mass.df))] %>%
       t() %>%
       as.vector()
     
-    expected.mt <- expected.mt * is.mt.vec
+    expected.mt <- rmts * is.mt.vec
+    
+    #### Apply relative migration time correction ----
+    
+    # correction only applies to compounds between first and last internal standard
+  
+    if(rmts[1] <= 1){
+      
+      correction.vector <- correction.values.df[,rmt.internal.standard] * (is.mt.df[,rmt.internal.standard] - expected.mt)
+      
+      expected.mt <- (rmts + correction.vector) * is.mt.vec
+      
+    }
+    
+    column.index <- which(colnames(correction.values.df) == rmt.internal.standard)
+    
+    if(rmts[1] > 1 & column.index < ncol(correction.values.df)){
+      
+      correction.vector <- correction.values.df[,(column.index + 1)] * (is.mt.df[,rmt.internal.standard] - expected.mt)
+      
+      expected.mt <- (rmts + correction.vector) * is.mt.vec
+    }
     
     # Filter peak.df for peaks within rmt tolerance
     
@@ -1091,7 +1143,7 @@ for (d in 1:length(data.files)){
     interferences <- strsplit(mass.df$interference[m], ", ") %>%
       unlist()
     
-    for (k in 1:length(interference)){
+    for (k in 1:length(interferences)){
       
       interference <- paste(interferences[k], ".apex.seconds", sep = "")
       
@@ -1126,7 +1178,7 @@ for (d in 1:length(data.files)){
   
   print("Peak Picking and Filtering for Analytes Complete")
   
-  # 8. Plotting ----
+  # 9. Plotting ----
   
   print("Plotting Electropherograms")
   
@@ -1245,7 +1297,7 @@ for (d in 1:length(data.files)){
   
   print("Plotting Complete")
   
-  # 9. Export Data ----
+  # 10. Export Data ----
   
   ## Generate peak area data frame ----
   
