@@ -617,9 +617,19 @@ for (d in 1:length(data.files)){
   
   # 7. Build Relative Migration Time Correction Model ----
   
-  # Reorder columns from fastest to slowest internal standards
+  # Reorder columns in order of peak elution
   
-  correction.df <- is.mt.df[,c(1,3,5,4,6,8,2,7,9,10,11)]
+  order.df <- is.mt.df[1,c(1:11)] %>%
+    t() %>%
+    as.data.frame()
+  
+  colnames(order.df) <- "migration.time"
+  
+  order.df <- arrange(order.df, migration.time)
+  
+  column.order <- rownames(order.df)
+  
+  correction.df <- is.mt.df[,column.order][,1:11]
   
   # Compute RMT values for RMTs <= 1
   
@@ -803,9 +813,11 @@ for (d in 1:length(data.files)){
     
     for(i in 1:num.of.injections){
       
-      if(rmts[i] <= 1){
+      column.index <- which(colnames(correction.values.below.df) == rmt.internal.standard)
+      
+      if(rmts[i] <= 1 & column.index > 1){
         
-        correction.value <- correction.values.below.df[,rmt.internal.standard][i] * (is.mt.df[,rmt.internal.standard][i] - expected.mt[i])
+        correction.value <- correction.values.below.df[,rmt.internal.standard][i] * (expected.mt[i] - correction.df[i,(which(colnames(correction.df) %in% rmt.internal.standard) - 1)])
         
         expected.mt[i] <- (rmts[i] + correction.value) * is.mt.vec[i]
         
@@ -815,7 +827,7 @@ for (d in 1:length(data.files)){
       
       if(rmts[i] > 1 & column.index < ncol(correction.values.above.df)){
         
-        correction.value <- correction.values.above.df[,(column.index + 1)][i] * (expected.mt[i] - is.mt.df[,rmt.internal.standard][i])
+        correction.value <- correction.values.above.df[,(column.index + 1)][i] * (expected.mt[i] - correction.df[,rmt.internal.standard][i])
         
         expected.mt[i] <- (rmts[i] + correction.value) * is.mt.vec[i]
       }
