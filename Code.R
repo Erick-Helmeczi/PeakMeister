@@ -615,73 +615,94 @@ for (d in 1:length(data.files)){
   
   print("Peak Picking and Filtering for Internal Standards Complete")
   
-  # 7. Build Relative Migration Time Correction Model ----
+  # 7. Build Relative Migration Time Correction Models ----
+  
+  # Only use internal standards
+  
+  is.names.vec <- subset(is.df$name, is.df$class == "Internal Standard") %>%
+    paste(., ".apex.seconds", sep = "")
+  
+  correction.df <- is.mt.df[,is.names.vec]
   
   # Reorder columns in order of peak elution
   
-  order.df <- is.mt.df[1,c(1:11)] %>%
-    t() %>%
-    as.data.frame()
+  correction.df <- correction.df[,order(correction.df[1,])] %>%
+    suppressWarnings()
   
-  colnames(order.df) <- "migration.time"
+  ## Model 1 - For analytes with rmts <= 1 ----
   
-  order.df <- arrange(order.df, migration.time)
+  # Create two data frames with same dimensions and names as correction.df 
   
-  column.order <- rownames(order.df)
-  
-  correction.df <- is.mt.df[,column.order][,1:11]
-  
-  # Compute RMT values for RMTs <= 1
-  
-  is.rmt.below.df <- correction.df
+  is.rmt.df.1 <- correction.df
   is.mt.diff.df <-  correction.df
   
+  # Compute correction values and time ranges
+  
   for (c in 2:ncol(correction.df)){
-    is.rmt.below.df[,c] <- correction.df[,(c - 1)]/correction.df[,c]
+    
+    is.rmt.df.1[,c] <- correction.df[,(c - 1)]/correction.df[,c]
     is.mt.diff.df[,c] <- correction.df[,c] - correction.df[,(c - 1)]
+    
   }
   
-  # This is stored for reference during the first data file
+  # The data frame is.rmts.1 is stored for reference during the first data file
   
   if (d == 1){
-    reference.rmt.df.below <-  is.rmt.below.df
+    
+    reference.rmt.df.1 <-  is.rmt.df.1
+    
   }
   
-  # Compute correction values for rmts < 1
+  # Compute correction values 
   
-  correction.values.below.df <- (is.rmt.below.df - reference.rmt.df.below) / is.mt.diff.df
+  correction.values.df.1 <- (is.rmt.df.1 - reference.rmt.df.1) / is.mt.diff.df
   
-  # Compute RMT values for RMts > 1
+  # Assign 0 to first column since no correction is applies to analytes without an internal standard eluting before it
   
-  is.rmt.above.df <- correction.df
+  correction.values.df.1[,1] <- 0
+  
+  # Remove non finite values
+  
+  is.na(correction.values.df.1)<-sapply(correction.values.df.1, is.infinite)
+  
+  correction.values.df.1[is.na(correction.values.df.1)] <- 0
+  
+  ## Model 2 - For analytes with rmts > 1 ----
+  
+  # Create data frames with same dimensions and names as correction.df
+  
+  is.rmt.df.2 <- correction.df
+  
+  # Compute correction values and time ranges
   
   for (c in 1:(ncol(correction.df) - 1)){
-    is.rmt.above.df[,c] <- correction.df[,(c + 1)]/correction.df[,c]
+    
+    is.rmt.df.2[,c] <- correction.df[,(c + 1)]/correction.df[,c]
     is.mt.diff.df[,c] <- correction.df[,(c + 1)] - correction.df[,c]
+    
   }
   
   # This is stored for reference during the first data file
   
   if (d == 1){
-    reference.rmt.df.above <-  is.rmt.above.df
+    
+    reference.rmt.df.2 <-  is.rmt.df.2
+    
   }
   
   # Compute correction values for rmts > 1
   
-  correction.values.above.df <- (is.rmt.above.df - reference.rmt.df.above) / is.mt.diff.df
+  correction.values.df.2 <- (is.rmt.df.2 - reference.rmt.df.2) / is.mt.diff.df
   
-  # Assign 0 to first column
+  # Assign 0 to last column since no correction is applies to analytes without an internal standard eluting after it
   
-  correction.values.above.df[,1] <- 0
-  correction.values.below.df[,1] <- 0
+  correction.values.df.2[,ncol(correction.values.df.2)] <- 0
   
-  # Remove NaN and Inf
+  # Remove non finite values
   
-  correction.values.above.df[sapply(correction.values.above.df, is.infinite)] <- 0
-  correction.values.below.df[sapply(correction.values.below.df, is.infinite)] <- 0
+  is.na(correction.values.df.2)<-sapply(correction.values.df.2, is.infinite)
   
-  correction.values.above.df[sapply(correction.values.above.df, is.na)] <- 0
-  correction.values.below.df[sapply(correction.values.below.df, is.na)] <- 0
+  correction.values.df.2[is.na(correction.values.df.2)] <- 0
   
   # 8. Metabolite  Peak Detection, Integration, and Filtering ----
   
@@ -809,25 +830,25 @@ for (d in 1:length(data.files)){
     
     #### Apply relative migration time correction ----
     
-    # correction only applies to compounds between first and last internal standard
-    
     for(i in 1:num.of.injections){
       
-      column.index <- which(colnames(correction.values.below.df) == rmt.internal.standard)
+      # correction only applies to compounds between first and last internal standard
+      
+      column.index <- which(colnames(correction.values.df.1) == rmt.internal.standard)
       
       if(rmts[i] <= 1 & column.index > 1){
         
-        correction.value <- correction.values.below.df[,rmt.internal.standard][i] * (expected.mt[i] - correction.df[i,(which(colnames(correction.df) %in% rmt.internal.standard) - 1)])
+        correction.value <- correction.values.df.1[,rmt.internal.standard][i] * (correction.df[,rmt.internal.standard][i] - expected.mt[i])
         
         expected.mt[i] <- (rmts[i] + correction.value) * is.mt.vec[i]
         
       }
       
-      column.index <- which(colnames(correction.values.above.df) == rmt.internal.standard)
+      column.index <- which(colnames(correction.values.df.2) == rmt.internal.standard)
       
-      if(rmts[i] > 1 & column.index < ncol(correction.values.above.df)){
+      if(rmts[i] > 1 & column.index < ncol(correction.values.df.2)){
         
-        correction.value <- correction.values.above.df[,(column.index + 1)][i] * (expected.mt[i] - correction.df[,rmt.internal.standard][i])
+        correction.value <- correction.values.df.2[,(column.index + 1)][i] * (expected.mt[i] - correction.df[,rmt.internal.standard][i])
         
         expected.mt[i] <- (rmts[i] + correction.value) * is.mt.vec[i]
       }
