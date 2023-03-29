@@ -31,6 +31,11 @@ num_of_is <- nrow(is_df)
 
 num_of_injections <- parameters_df$number.of.injections[1]
 
+# Create a "Outputs" folder to store csv files
+
+dir.create(path = "csv Outputs",
+           showWarnings = FALSE)
+
 # Create a "Plots" folder to store figures
 
 dir.create(path = "Plots",
@@ -250,7 +255,7 @@ for (d in 1:length(data_files)){
   
   # clean-up global environment 
   
-  rm(list = c("model", "model_data", "assaydata_names", "correction_vector", "mz_indices",
+  rm(list = c("model", "model_data", "correction_vector", "mz_indices",
               "experimental_mass_diff", "experimental_mz", "index_of_lower_lock_masses", "minimum_counts",
               "index_of_upper_lock_masses", "intensity", "mass_window", "max_intensity_index",
               "max_lock_masses", "min_lock_masses", "mz", "lock_masses", "s", "spectrum", "slope", "intercept",
@@ -629,10 +634,17 @@ for (d in 1:length(data_files)){
   
   correction_df <- is_mt_df[,is_names_vec]
   
-  # Reorder columns in order of peak elution
+  # Reorder internal columns from first internal standard to elute to last. Use order from first data
+  # file for all subsequent runs
   
-  correction_df <- correction_df[,order(correction_df[1,])] %>%
-    suppressWarnings()
+  if (d == 1) {
+    
+    correction_df_order <- correction_df[,order(correction_df[1,])] %>%
+      suppressWarnings()
+    
+  }
+
+  correction_df <- correction_df[colnames(correction_df_order)]
   
   ## Model 1 - For analytes with rmts <= 1 ----
   
@@ -843,7 +855,7 @@ for (d in 1:length(data_files)){
       
       if(rmts[i] <= 1 & column_index > 1){
         
-        correction_value <- correction_values_df_1[,rmt_internal_standard][i] * (correction_df[,rmt_internal_standard][i] - expected_mt[i])
+        correction_value <- correction_values_df_1[i ,rmt_internal_standard] * (correction_df[i ,rmt_internal_standard] - expected_mt[i])
         
         expected_mt[i] <- (rmts[i] + correction_value) * is_mt_vec[i]
         
@@ -853,7 +865,7 @@ for (d in 1:length(data_files)){
       
       if(rmts[i] > 1 & column_index < ncol(correction_values_df_2)){
         
-        correction_value <- correction_values_df_2[,(column_index + 1)][i] * (expected_mt[i] - correction_df[,rmt_internal_standard][i])
+        correction_value <- correction_values_df_2[i ,(column_index + 1)] * (expected_mt[i] - correction_df[i ,rmt_internal_standard])
         
         expected_mt[i] <- (rmts[i] + correction_value) * is_mt_vec[i]
       }
@@ -1044,10 +1056,18 @@ for (d in 1:length(data_files)){
     
     count = 4
     
+    # Keep unaltered filtered peaks data frame for the event that the peak space algorithm fails
+    
+    filtered_peaks_df_retain <- filtered_peaks_df
+    
+    # set count limit to determine when the algoithm fails
+    
+    count_limit = 100
+    
     # Identify bad peaks, and replace them with peaks meeting peak space criteria
     # If the number of bad peaks is equal to the number of injections, do not apply this filter
     
-    while(length(bad_peaks) > 0 & length(bad_peaks) < num_of_injections){
+    while(length(bad_peaks) > 0 & length(bad_peaks) < num_of_injections & count < count_limit){
       
       # define remaining peaks which are correctly assigned (good peaks)
       
@@ -1125,6 +1145,14 @@ for (d in 1:length(data_files)){
       # bad peaks correspond to any rows that are not unique
       
       bad_peaks <- which(filtered_peaks_df[,2] %in% filtered_peaks_df[duplicate_location,2])
+      
+    }
+    
+    # if algorithm failed, revert back to filtered_peaks_df
+    
+    if (count == count_limit){
+      
+      filtered_peaks_df <- filtered_peaks_df_retain
       
     }
     
