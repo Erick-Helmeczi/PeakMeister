@@ -31,7 +31,7 @@ num_of_is <- nrow(is_df)
 
 num_of_injections <- parameters_df$number.of.injections[1]
 
-# Create a "Outputs" folder to store csv files
+# Create an "Outputs" folder to store csv files
 
 dir.create(path = "csv Outputs",
            showWarnings = FALSE)
@@ -41,7 +41,7 @@ dir.create(path = "csv Outputs",
 dir.create(path = "Plots",
            showWarnings = FALSE)
 
-# Generate plot sub-folders for each internal standard and metabolite
+# Generate plot sub-folders for ots of each internal standard and metabolite
 
 name_vec <- c(is_df$name, mass_df$name)
 
@@ -77,7 +77,7 @@ for (d in 1:length(data_files)){
 
   # 2. Read Data File ----
 
-  # Make a copy of the data file
+  # Make a copy of the data file as data will be written directly to this file during mass calibration
   
   file.copy(data_files[d], to = paste(data_files[d], "temp", sep = "_"))
   
@@ -106,7 +106,7 @@ for (d in 1:length(data_files)){
   
   # The objective of this feature is to perform a mass calibration on each spectrum using
   # the two lock masses provided in the parameters data frame. The experimentally determined lock mass value
-  # is considered the most intense mass within near where the lock mass is expected. In this work, we found that 
+  # is considered the most intense mass within near where the lock mass is expected. However, in this work, we found that 
   # the most intense value is not the most accurate estimation of the lock mass given the paucity of mz data collected.
   # Thus, a model is built using the two points to the left of the lock mass peak and the two points to the right.
   # The lock mass value is then defined as the intersection of these two points. The mass error between the theoretical
