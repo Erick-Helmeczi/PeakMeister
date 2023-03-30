@@ -831,6 +831,13 @@ for (d in 1:length(data_files)){
     
     ## Filter peaks ----
     
+    # Build a data frame to store comments for each metabolite peak
+    
+    comment_df <- matrix(nrow = num_of_injections, ncol = num_of_metabolites, "") %>%
+      as.data.frame
+    
+    colnames(comment_df) <- mass_df$name
+    
     ### Filter peaks based on smallest rmt difference ----
     
     # Determine the expected migration times of the metabolites
@@ -951,7 +958,7 @@ for (d in 1:length(data_files)){
     
     count = 2
     
-    while (any(duplicated(filtered_peaks_df[,2]))){
+    while (any(duplicated(filtered_peaks_df[,2])) & count < 100){
       
       strict_rmt_tolerance <- rmt_tolerance/count
       
@@ -1003,11 +1010,23 @@ for (d in 1:length(data_files)){
         
       }
       
-      # Designate a more strict cut off
-      
       count = count + 1
+    }
+    
+    # If the duplicate peak filter fails (count = 100) then generate a place holder peak_df
+    # and generate a warning that the filter failed. This filter fails when two or more expected migration 
+    # times are too close to each other.
+    
+    if (count == 100){
       
-      strict_rmt_tolerance <- rmt_tolerance/count
+      mt.temp <- eie_df$mt.seconds[seq(1, num_of_injections * 10, 10)]
+      
+      filtered_peaks_df[,c(1:3)] <- mt.temp
+      filtered_peaks_df[,c(4:7)] <- 0
+      
+      comment_df[1,name_vec[m]] <- "Peak Filtering Failed to Remove Duplicate Peaks"
+      
+      print(paste("WARNING: Peak Filtering Failed for", name_vec[m]))
     }
     
     ### Filter using peak spaces ----
@@ -1166,13 +1185,6 @@ for (d in 1:length(data_files)){
   }
   
   ### Filter peaks below LOD ----
-  
-  # Build a data frame to store comments for each metabolite peak
-  
-  comment_df <- matrix(nrow = num_of_injections, ncol = num_of_metabolites, "") %>%
-    as.data.frame
-  
-  colnames(comment_df) <- mass_df$name
   
   # Loop through each metabolite and see if its area is below the LOD threshold
   
