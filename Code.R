@@ -126,140 +126,117 @@ for (d in 1:length(data_files)){
   min_lock_masses <- lock_masses - lock_masses * mass_window/1000000
   max_lock_masses <- lock_masses + lock_masses * mass_window/1000000
   
-  # Loop through each spectrum to build a model and perform the calibration
+  # Loop through each spectrum to build a model and perform the mass calibration
   
   for (s in 1:end(rtime(run_data))[1]){
     
-    spectrum <- ls(run_data@assayData)[s]
+    spectrum_name <- ls(run_data@assayData)[s]
     
-    # Create vector of mass-to-charges and intensities 
-    
-    mz <- run_data@assayData[[spectrum]]@mz
-    
-    intensity <- run_data@assayData[[spectrum]]@intensity
+    spectrum <- data.frame(index = 1:length(run_data@assayData[[spectrum_name]]@mz),
+                           mz = run_data@assayData[[spectrum_name]]@mz,
+                           intensity = run_data@assayData[[spectrum_name]]@intensity)
     
     ## Lower reference mass correction factor ----
+  
+    max_intensity_index <- spectrum %>%
+      filter(mz >= min_lock_masses[1] & mz <= max_lock_masses[1]) %>%
+      slice_max(intensity) %>%
+      pull (index)
     
-    mz_indices <- mz %>%
-      between(min_lock_masses[1], max_lock_masses[1]) %>%
-      which()
+    # If more than one max intensity is sound or lock mass intensity is below threshold, do not apply a correction
     
-    # Ignore spectrums where no reference mass signals are being detected (no spray)
-    
-    if(length(mz_indices) < 2){
+    if(length(max_intensity_index) != 1 | spectrum$intensity[max_intensity_index[1]] < minimum_counts){
       next
     }
     
-    # find mz with max intensity
+    lock_mass_spectrum <- data.frame(mz = spectrum$mz[(max_intensity_index - 3):(max_intensity_index + 3)],
+                               intensity = spectrum$intensity[(max_intensity_index - 3):(max_intensity_index + 3)])
     
-    max_intensity_index <- mz_indices[which.max(intensity[mz_indices])]
+    # Generate a density function of the lock_mass_spectrum to be used to estimate the mz of the lock mass
+
+    intensity_density <- density(lock_mass_spectrum$intensity, bw = "SJ", kernel = "gaussian")
     
-    # if reference mass intensity is below threshold, do not apply a correction
+    # Find the index of the maximum density value in the PDF
     
-    if(intensity[max_intensity_index] < minimum_counts){
-      next
-    }
+    max_density_index <- which.max(intensity_density$y)
     
-    # Build two linear models to predict the true apex of the reference mass
-    # Build a model for the left two points
+    # Get the estimated maximum intensity value
     
-    left_line_points <- data.frame("mz" = c(mz[max_intensity_index - 1], mz[max_intensity_index - 2]),
-                                   "intensity" = c(intensity[max_intensity_index - 1], intensity[max_intensity_index - 2]))
+    max_intensity_est <- intensity_density$x[max_density_index]
     
-    model_left <- lm(formula = left_line_points$intensity ~ left_line_points$mz)
+    # Estimate the mz value that corresponds to the estimated maximum intensity value
     
-    # Build a model for the right two points
-    
-    right_line_points <- data.frame("mz" = c(mz[max_intensity_index + 1], mz[max_intensity_index + 2]),
-                                    "intensity" = c(intensity[max_intensity_index + 1], intensity[max_intensity_index + 2]))
-    
-    model_right <- lm(formula = right_line_points$intensity ~ right_line_points$mz)
-    
-    # Solve for where the two models are equal to each other
-    
-    slope <- model_left[["coefficients"]][["left_line_points$mz"]] - model_right[["coefficients"]][["right_line_points$mz"]]
-    intercept <- model_right[["coefficients"]][["(Intercept)"]] - model_left[["coefficients"]][["(Intercept)"]]
-    
-    experimental_mz <- solve(slope, intercept)
+    experimental_mz <- approx(x = lock_mass_spectrum$intensity, y = lock_mass_spectrum$mz, xout = max_intensity_est)$y
     
     # determine mass difference and mz index for model
     
-    experimental_mass_diff <- experimental_mz - lock_masses[1]
+    experimental_mass_diff <- lock_masses[1] - experimental_mz
     
-    index_of_lower_lock_masses <- max_intensity_index
+    index_of_lower_lock_mass <- max_intensity_index
     
     ## Upper reference mass correction factor ----
     
-    mz_indices <- mz %>%
-      between(min_lock_masses[2], max_lock_masses[2]) %>%
-      which()
+    max_intensity_index <- spectrum %>%
+      filter(mz >= min_lock_masses[2] & mz <= max_lock_masses[2]) %>%
+      slice_max(intensity) %>%
+      pull (index)
     
-    # Ignore spectrums where no reference mass signals are being detected (no spray)
+    # If more than one max intensity is sound or lock mass intensity is below threshold, do not apply a correction
     
-    if(length(mz_indices) < 2){
+    if(length(max_intensity_index) != 1 | spectrum$intensity[max_intensity_index[1]] < minimum_counts){
       next
     }
     
-    # find mz with max intensity
+    lock_mass_spectrum <- data.frame(mz = spectrum$mz[(max_intensity_index - 3):(max_intensity_index + 3)],
+                                     intensity = spectrum$intensity[(max_intensity_index - 3):(max_intensity_index + 3)])
     
-    max_intensity_index <- mz_indices[which.max(intensity[mz_indices])]
+    # Generate a density function of the lock_mass_spectrum to be used to estimate the mz of the lock mass
     
-    # if reference mass intensity is below threshold, do not apply a correction
+    intensity_density <- density(lock_mass_spectrum$intensity, bw = "SJ", kernel = "gaussian")
     
-    if(intensity[max_intensity_index] < minimum_counts){
-      next
-    }
+    # Find the index of the maximum density value in the PDF
     
-    # Build two linear models to predict the true apex of the reference mass
-    # Build a model for the left two points
+    max_density_index <- which.max(intensity_density$y)
     
-    left_line_points <- data.frame("mz" = c(mz[max_intensity_index - 1], mz[max_intensity_index - 2]),
-                                   "intensity" = c(intensity[max_intensity_index - 1], intensity[max_intensity_index - 2]))
+    # Get the estimated maximum intensity value
     
-    model_left <- lm(formula = left_line_points$intensity ~ left_line_points$mz)
+    max_intensity_est <- intensity_density$x[max_density_index]
     
-    # Build a model for the right two points
+    # Estimate the mz value that corresponds to the estimated maximum intensity value
     
-    right_line_points <- data.frame("mz" = c(mz[max_intensity_index + 1], mz[max_intensity_index + 2]),
-                                    "intensity" = c(intensity[max_intensity_index + 1], intensity[max_intensity_index + 2]))
-    
-    model_right <- lm(formula = right_line_points$intensity ~ right_line_points$mz)
-    
-    # Solve for where the two models are equal to each other
-    
-    slope <- model_left[["coefficients"]][["left_line_points$mz"]] - model_right[["coefficients"]][["right_line_points$mz"]]
-    intercept <- model_right[["coefficients"]][["(Intercept)"]] - model_left[["coefficients"]][["(Intercept)"]]
-    
-    experimental_mz <- solve(slope, intercept) 
+    experimental_mz[2] <- approx(x = lock_mass_spectrum$intensity, y = lock_mass_spectrum$mz, xout = max_intensity_est)$y
     
     # determine mass difference and mz index for model
     
-    experimental_mass_diff[2] <- experimental_mz - lock_masses[2]
+    experimental_mass_diff[2] <- lock_masses[2] - experimental_mz[2]
     
-    index_of_upper_lock_masses <- max_intensity_index
+    index_of_upper_lock_mass <- max_intensity_index
     
     ## Develop correction model ----
     
-    model_data <- data.frame("x" = c(run_data@assayData[[spectrum]]@mz[index_of_lower_lock_masses], run_data@assayData[[spectrum]]@mz[index_of_upper_lock_masses]), 
+    model_data <- data.frame("x" = experimental_mz, 
                              "y" = c(experimental_mass_diff[1], experimental_mass_diff[2]))
     
     model <- lm(y ~ x, model_data)
     
     ## Apply correction model----
     
-    correction_vector <- c(model[["coefficients"]][["x"]] * mz[1:length(mz)]) + model[["coefficients"]][["(Intercept)"]]
+    correction_vector <- c(model[["coefficients"]][["x"]] * spectrum$mz) + model[["coefficients"]][["(Intercept)"]]
     
-    run_data@assayData[[spectrum]]@mz <- run_data@assayData[[spectrum]]@mz - correction_vector 
+    correction_vector[1:index_of_lower_lock_mass] <- experimental_mass_diff[1]
+    
+    correction_vector[index_of_upper_lock_mass:length(correction_vector)] <- experimental_mass_diff[2]
+    
+    run_data@assayData[[spectrum_name]]@mz <- run_data@assayData[[spectrum_name]]@mz + correction_vector 
     
   }
   
   # clean-up global environment 
   
-  rm(list = c("model", "model_data", "correction_vector", "mz_indices",
-              "experimental_mass_diff", "experimental_mz", "index_of_lower_lock_masses", "minimum_counts",
-              "index_of_upper_lock_masses", "intensity", "mass_window", "max_intensity_index",
-              "max_lock_masses", "min_lock_masses", "mz", "lock_masses", "s", "spectrum", "slope", "intercept",
-              "left_line_points", "model_left", "model_right", "right_line_points"))
+  rm(list = c("model", "model_data", "correction_vector", "minimum_counts",
+              "experimental_mass_diff", "experimental_mz", "index_of_lower_lock_mass", 
+              "index_of_upper_lock_mass", "mass_window", "max_intensity_index",
+              "max_lock_masses", "min_lock_masses", "lock_masses", "s", "spectrum",))
   
   print("Mass Calibration Complete")
   
