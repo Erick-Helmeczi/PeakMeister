@@ -104,27 +104,58 @@ for (d in 1:length(data_files)){
   
   # 3. Perform Mass Calibration ----
   
-  # The objective of this feature is to perform a mass calibration on each spectrum using
-  # the two lock masses provided in the parameters data frame. The experimentally determined lock mass value
-  # is considered the most intense mass within near where the lock mass is expected. However, in this work, we found that 
-  # the most intense value is not the most accurate estimation of the lock mass given the paucity of mz data collected.
-  # Thus, a model is built using the two points to the left of the lock mass peak and the two points to the right.
-  # The lock mass value is then defined as the intersection of these two points. The mass error between the theoretical
-  # mass and the experimentally determined mass is then used to build a linear model. This model is used to
-  # calibrate all other masses in each spectrum. 
-  
   print("Performing Mass Calibration")
   
-  # Read lock mass values, window to search in, and minimum counts required to be included
+  # Define mass window and minimum lock mass counts
   
-  lock_masses <- c(parameters_df$ref.mass.one[1], parameters_df$ref.mass.two[1]) 
   mass_window <- parameters_df$ref.mass.window.ppm[1]
+  
   minimum_counts <- parameters_df$ref.mass.minimum.counts[1]
   
-  # Define mass ranges to be searched for lock mass
+  # Define a function to calculate 1. experimental m/z of lock masses, 2. the corresponding mass error, and 3. the index of the lock mass
+  # The lock mass value is currently the most intense point in the mass window plus an adjustment to better predict the lock mass value.
   
-  min_lock_masses <- lock_masses - lock_masses * mass_window/1000000
-  max_lock_masses <- lock_masses + lock_masses * mass_window/1000000
+  calibration_parameters <- function(spectrum, lock_mass, minimum_counts, mass_window) {
+    
+    lock_mass_range <- c((lock_mass - lock_mass * mass_window/1000000), (lock_mass + lock_mass * mass_window/1000000))
+    
+    # Find the index of the most intense point in the lock mass window
+    
+    max_intensity_index <- spectrum %>%
+      filter(mz >= lock_mass_range[1] & mz <= lock_mass_range[2]) %>%
+      slice_max(intensity) %>%
+      pull(index)
+    
+    if(length(max_intensity_index) == 1){
+      if(spectrum$intensity[max_intensity_index] > minimum_counts){
+        
+        # Create a data frame with all four points
+        line_points <- data.frame("mz" = c(spectrum$mz[(max_intensity_index - 2):(max_intensity_index - 1)], 
+                                           spectrum$mz[(max_intensity_index + 1):(max_intensity_index + 2)]),
+                                  "intensity" = c(spectrum$intensity[(max_intensity_index - 2):(max_intensity_index - 1)], 
+                                                  spectrum$intensity[(max_intensity_index + 1):(max_intensity_index + 2)]))
+        
+        # Create a model for all four points
+        model_left <- lm(formula = intensity ~ mz, data = line_points[c(1,2),])
+        model_right <- lm(formula = intensity ~ mz, data = line_points[c(3,4),])
+        
+        # Get the coefficients for both models
+        coefficients_left <- c(model_left$coefficients["mz"], model_left$coefficients["(Intercept)"])
+        coefficients_right <- c(model_right$coefficients["mz"], model_right$coefficients["(Intercept)"])
+        
+        # Calculate the slope and intercept
+        slope <- coefficients_left[1] - coefficients_right[1]
+        intercept <- coefficients_right[2] - coefficients_left[2]
+        
+        # Solve for the experimental_mz
+        experimental_mz <- solve(slope, intercept)
+        
+        experimental_mass_diff <- lock_mass - experimental_mz
+        
+        return(c(experimental_mz, experimental_mass_diff, max_intensity_index))
+      }
+    }
+  }
   
   # Loop through each spectrum to build a model and perform the mass calibration
   
@@ -136,86 +167,32 @@ for (d in 1:length(data_files)){
                            mz = run_data@assayData[[spectrum_name]]@mz,
                            intensity = run_data@assayData[[spectrum_name]]@intensity)
     
-    ## Lower reference mass correction factor ----
-  
-    max_intensity_index <- spectrum %>%
-      filter(mz >= min_lock_masses[1] & mz <= max_lock_masses[1]) %>%
-      slice_max(intensity) %>%
-      pull (index)
+    # Lower lock mass
     
-    # If more than one max intensity is sound or lock mass intensity is below threshold, do not apply a correction
+    lock_mass <- parameters_df$ref.mass.one[1]
     
-    if(length(max_intensity_index) != 1 | spectrum$intensity[max_intensity_index[1]] < minimum_counts){
+    cal_para_1 <- calibration_parameters(spectrum = spectrum,
+                                         lock_mass = lock_mass,
+                                         minimum_counts = minimum_counts,
+                                         mass_window = mass_window)
+    
+    # Upper lock mass
+    
+    lock_mass <- parameters_df$ref.mass.two[1]
+    
+    cal_para_2 <- calibration_parameters(spectrum = spectrum,
+                                         lock_mass = lock_mass,
+                                         minimum_counts = minimum_counts,
+                                         mass_window = mass_window)
+    
+    if (is.null(cal_para_1) | is.null(cal_para_2)){
       next
     }
-    
-    lock_mass_spectrum <- data.frame(mz = spectrum$mz[(max_intensity_index - 3):(max_intensity_index + 3)],
-                               intensity = spectrum$intensity[(max_intensity_index - 3):(max_intensity_index + 3)])
-    
-    # Generate a density function of the lock_mass_spectrum to be used to estimate the mz of the lock mass
-
-    intensity_density <- density(lock_mass_spectrum$intensity, bw = "SJ", kernel = "gaussian")
-    
-    # Find the index of the maximum density value in the PDF
-    
-    max_density_index <- which.max(intensity_density$y)
-    
-    # Get the estimated maximum intensity value
-    
-    max_intensity_est <- intensity_density$x[max_density_index]
-    
-    # Estimate the mz value that corresponds to the estimated maximum intensity value
-    
-    experimental_mz <- approx(x = lock_mass_spectrum$intensity, y = lock_mass_spectrum$mz, xout = max_intensity_est)$y
-    
-    # determine mass difference and mz index for model
-    
-    experimental_mass_diff <- lock_masses[1] - experimental_mz
-    
-    index_of_lower_lock_mass <- max_intensity_index
-    
-    ## Upper reference mass correction factor ----
-    
-    max_intensity_index <- spectrum %>%
-      filter(mz >= min_lock_masses[2] & mz <= max_lock_masses[2]) %>%
-      slice_max(intensity) %>%
-      pull (index)
-    
-    # If more than one max intensity is sound or lock mass intensity is below threshold, do not apply a correction
-    
-    if(length(max_intensity_index) != 1 | spectrum$intensity[max_intensity_index[1]] < minimum_counts){
-      next
-    }
-    
-    lock_mass_spectrum <- data.frame(mz = spectrum$mz[(max_intensity_index - 3):(max_intensity_index + 3)],
-                                     intensity = spectrum$intensity[(max_intensity_index - 3):(max_intensity_index + 3)])
-    
-    # Generate a density function of the lock_mass_spectrum to be used to estimate the mz of the lock mass
-    
-    intensity_density <- density(lock_mass_spectrum$intensity, bw = "SJ", kernel = "gaussian")
-    
-    # Find the index of the maximum density value in the PDF
-    
-    max_density_index <- which.max(intensity_density$y)
-    
-    # Get the estimated maximum intensity value
-    
-    max_intensity_est <- intensity_density$x[max_density_index]
-    
-    # Estimate the mz value that corresponds to the estimated maximum intensity value
-    
-    experimental_mz[2] <- approx(x = lock_mass_spectrum$intensity, y = lock_mass_spectrum$mz, xout = max_intensity_est)$y
-    
-    # determine mass difference and mz index for model
-    
-    experimental_mass_diff[2] <- lock_masses[2] - experimental_mz[2]
-    
-    index_of_upper_lock_mass <- max_intensity_index
     
     ## Develop correction model ----
     
-    model_data <- data.frame("x" = experimental_mz, 
-                             "y" = c(experimental_mass_diff[1], experimental_mass_diff[2]))
+    model_data <- data.frame("x" = c(cal_para_1[1], cal_para_2[1]),
+                             "y" = c(cal_para_1[2], cal_para_2[2]))
     
     model <- lm(y ~ x, model_data)
     
@@ -223,20 +200,21 @@ for (d in 1:length(data_files)){
     
     correction_vector <- c(model[["coefficients"]][["x"]] * spectrum$mz) + model[["coefficients"]][["(Intercept)"]]
     
-    correction_vector[1:index_of_lower_lock_mass] <- experimental_mass_diff[1]
+    correction_vector[1:cal_para_1[3]] <- cal_para_1[2]
     
-    correction_vector[index_of_upper_lock_mass:length(correction_vector)] <- experimental_mass_diff[2]
+    correction_vector[cal_para_2[3]:length(correction_vector)] <- cal_para_2[2]
     
-    run_data@assayData[[spectrum_name]]@mz <- run_data@assayData[[spectrum_name]]@mz + correction_vector 
+    run_data@assayData[[spectrum_name]]@mz <- run_data@assayData[[spectrum_name]]@mz + correction_vector
+    
+    rm(list = c("cal_para_1", "cal_para_2"))
     
   }
   
-  # clean-up global environment 
+  # clean-up global environment
   
   rm(list = c("model", "model_data", "correction_vector", "minimum_counts",
-              "experimental_mass_diff", "experimental_mz", "index_of_lower_lock_mass", 
-              "index_of_upper_lock_mass", "mass_window", "max_intensity_index",
-              "max_lock_masses", "min_lock_masses", "lock_masses", "s", "spectrum",))
+              "mass_window", "s", "spectrum", "lock_mass", "spectrum_name", 
+              "calibration_parameters"))
   
   print("Mass Calibration Complete")
   
@@ -711,9 +689,9 @@ for (d in 1:length(data_files)){
     # Determine the start, apex, and end of peaks. Use the user defined value "n" to detect peaks.
     # If n results in fewer peaks then injection, decrease n by 1 and repeat
     
+    n <- parameters_df$required.points.for.peak.picking[1]
+    
     while (nrow(peak_df) < num_of_injections){
-      
-      n <- parameters_df$required.points.for.peak.picking[1]
       
       rle_output <- eie_df[,m + 1] %>%
         diff() %>%
