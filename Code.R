@@ -157,66 +157,72 @@ for (d in 1:length(data_files)){
     }
   }
   
-  # Loop through each spectrum to build a model and perform the mass calibration
+  # Check if mass calibration should be applied
   
-  for (s in 1:end(rtime(run_data))[1]){
+  if (parameters_df$apply.mass.calibration == "Yes"){
     
-    spectrum_name <- ls(run_data@assayData)[s]
+    # Loop through each spectrum to build a model and perform the mass calibration
     
-    spectrum <- data.frame(index = 1:length(run_data@assayData[[spectrum_name]]@mz),
-                           mz = run_data@assayData[[spectrum_name]]@mz,
-                           intensity = run_data@assayData[[spectrum_name]]@intensity)
-    
-    # Lower lock mass
-    
-    lock_mass <- parameters_df$ref.mass.one[1]
-    
-    cal_para_1 <- calibration_parameters(spectrum = spectrum,
-                                         lock_mass = lock_mass,
-                                         minimum_counts = minimum_counts,
-                                         mass_window = mass_window)
-    
-    # Upper lock mass
-    
-    lock_mass <- parameters_df$ref.mass.two[1]
-    
-    cal_para_2 <- calibration_parameters(spectrum = spectrum,
-                                         lock_mass = lock_mass,
-                                         minimum_counts = minimum_counts,
-                                         mass_window = mass_window)
-    
-    if (is.null(cal_para_1) | is.null(cal_para_2)){
-      next
+    for (s in 1:end(rtime(run_data))[1]){
+      
+      spectrum_name <- ls(run_data@assayData)[s]
+      
+      spectrum <- data.frame(index = 1:length(run_data@assayData[[spectrum_name]]@mz),
+                             mz = run_data@assayData[[spectrum_name]]@mz,
+                             intensity = run_data@assayData[[spectrum_name]]@intensity)
+      
+      # Lower lock mass
+      
+      lock_mass <- parameters_df$ref.mass.one[1]
+      
+      cal_para_1 <- calibration_parameters(spectrum = spectrum,
+                                           lock_mass = lock_mass,
+                                           minimum_counts = minimum_counts,
+                                           mass_window = mass_window)
+      
+      # Upper lock mass
+      
+      lock_mass <- parameters_df$ref.mass.two[1]
+      
+      cal_para_2 <- calibration_parameters(spectrum = spectrum,
+                                           lock_mass = lock_mass,
+                                           minimum_counts = minimum_counts,
+                                           mass_window = mass_window)
+      
+      if (is.null(cal_para_1) | is.null(cal_para_2)){
+        next
+      }
+      
+      ## Develop correction model ----
+      
+      model_data <- data.frame("x" = c(cal_para_1[1], cal_para_2[1]),
+                               "y" = c(cal_para_1[2], cal_para_2[2]))
+      
+      model <- lm(y ~ x, model_data)
+      
+      ## Apply correction model----
+      
+      correction_vector <- c(model[["coefficients"]][["x"]] * spectrum$mz) + model[["coefficients"]][["(Intercept)"]]
+      
+      correction_vector[1:cal_para_1[3]] <- cal_para_1[2]
+      
+      correction_vector[cal_para_2[3]:length(correction_vector)] <- cal_para_2[2]
+      
+      run_data@assayData[[spectrum_name]]@mz <- run_data@assayData[[spectrum_name]]@mz + correction_vector
+      
+      rm(list = c("cal_para_1", "cal_para_2"))
+      
     }
     
-    ## Develop correction model ----
+    # clean-up global environment
     
-    model_data <- data.frame("x" = c(cal_para_1[1], cal_para_2[1]),
-                             "y" = c(cal_para_1[2], cal_para_2[2]))
+    rm(list = c("model", "model_data", "correction_vector", "minimum_counts",
+                "mass_window", "s", "spectrum", "lock_mass", "spectrum_name", 
+                "calibration_parameters"))
     
-    model <- lm(y ~ x, model_data)
-    
-    ## Apply correction model----
-    
-    correction_vector <- c(model[["coefficients"]][["x"]] * spectrum$mz) + model[["coefficients"]][["(Intercept)"]]
-    
-    correction_vector[1:cal_para_1[3]] <- cal_para_1[2]
-    
-    correction_vector[cal_para_2[3]:length(correction_vector)] <- cal_para_2[2]
-    
-    run_data@assayData[[spectrum_name]]@mz <- run_data@assayData[[spectrum_name]]@mz + correction_vector
-    
-    rm(list = c("cal_para_1", "cal_para_2"))
+    print("Mass Calibration Complete")
     
   }
-  
-  # clean-up global environment
-  
-  rm(list = c("model", "model_data", "correction_vector", "minimum_counts",
-              "mass_window", "s", "spectrum", "lock_mass", "spectrum_name", 
-              "calibration_parameters"))
-  
-  print("Mass Calibration Complete")
   
   # 4. Extract Electropherograms ----
   
@@ -259,14 +265,14 @@ for (d in 1:length(data_files)){
   
   print("Smoothing Electropherograms")
   
-  smoothing_kernal_vec <- c(is_df$smoothing.kernal, mass_df$smoothing.kernal)
+  smoothing_kernel_vec <- c(is_df$smoothing.kernel, mass_df$smoothing.kernel)
   smoothing_strength_vec <- c(is_df$smoothing.strength, mass_df$smoothing.strength)
   
   for (n in 1:length(name_vec)){ 
     Smooth <- with(eie_df, 
                    ksmooth(x = mt.seconds, 
                            y = eie_df[,n + 1], 
-                           kernel = smoothing_kernal_vec[n], 
+                           kernel = smoothing_kernel_vec[n], 
                            bandwidth = smoothing_strength_vec[n]))
     eie_df[,n + 1] <- Smooth[["y"]]
   }
@@ -691,7 +697,7 @@ for (d in 1:length(data_files)){
     
     n <- parameters_df$required.points.for.peak.picking[1]
     
-    while (nrow(peak_df) < num_of_injections){
+    while (nrow(peak_df) < num_of_injections & n >= 0){
       
       rle_output <- eie_df[,m + 1] %>%
         diff() %>%
