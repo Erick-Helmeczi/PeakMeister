@@ -1420,17 +1420,17 @@ for (d in 1:length(data_files)){
   print(paste("Completed Analysis of Data File: ", data_file_names[d], sep = ""))
   print("")
   
+  ## Export data ----
+  
+  write.csv(peak_area_report,
+            file = "csv Outputs/Metabolite Peak Areas.csv",
+            row.names = FALSE)
+  
+  write.csv(peak_mt_report,
+            file = "csv Outputs/Metabolite Migration Times.csv",
+            row.names = FALSE)
+  
 }
-
-## Export data ----
-
-write.csv(peak_area_report,
-          file = "csv Outputs/Metabolite Peak Areas.csv",
-          row.names = FALSE)
-
-write.csv(peak_mt_report,
-          file = "csv Outputs/Metabolite Migration Times.csv",
-          row.names = FALSE)
 
 # close progress bar
 
