@@ -588,47 +588,49 @@ for (d in 1:length(data_files)){
   
   # 7. Build Relative Migration Time Correction Models ----
   
-  # Only use internal standards
+  print("Building Relative Migration Time Models")
+  
+  # Collect migration time data for features specified as internal standards
   
   is_names_vec <- subset(is_df$name, is_df$class == "Internal Standard") %>%
     paste(., ".apex.seconds", sep = "")
   
   correction_df <- is_mt_df[,is_names_vec]
   
-  # Reorder internal columns from first internal standard to elute to last. Use order from first data
-  # file for all subsequent runs
+  # Reorder internal columns by elution order. Use order from first data file for all subsequent runs
   
   if (d == 1) {
-    
-    correction_df_order <- correction_df[,order(correction_df[1,])] %>%
+    correction_df_order <- correction_df[, order(correction_df[1,])] %>%
       suppressWarnings()
-    
   }
-
+  
   correction_df <- correction_df[colnames(correction_df_order)]
   
   ## Model 1 - For analytes with rmts <= 1 ----
   
   # Create two data frames with same dimensions and names as correction_df 
   
-  is_rmt_df_1 <- correction_df
-  is_mt_diff_df <-  correction_df
+  is_rmt_df_1 <- as.data.frame(matrix(0, 
+                                      nrow = nrow(correction_df), 
+                                      ncol = ncol(correction_df), 
+                                      dimnames = list(NULL, names(correction_df))))
+  
+  is_mt_diff_df <- as.data.frame(matrix(0, 
+                                        nrow = nrow(correction_df), 
+                                        ncol = ncol(correction_df), 
+                                        dimnames = list(NULL, names(correction_df))))
   
   # Compute correction values and time ranges
   
   for (c in 2:ncol(correction_df)){
-    
     is_rmt_df_1[,c] <- correction_df[,(c - 1)]/correction_df[,c]
     is_mt_diff_df[,c] <- correction_df[,c] - correction_df[,(c - 1)]
-    
   }
   
   # The data frame is.rmts.1 is stored for reference during the first data file
   
   if (d == 1){
-    
-    reference_rmt_df_1 <-  is_rmt_df_1
-    
+    reference_rmt_df_1 <- is_rmt_df_1
   }
   
   # Compute correction values 
@@ -641,7 +643,7 @@ for (d in 1:length(data_files)){
   
   # Remove non finite values
   
-  is.na(correction_values_df_1)<-sapply(correction_values_df_1, is.infinite)
+  is.na(correction_values_df_1) <- sapply(correction_values_df_1, is.infinite)
   
   correction_values_df_1[is.na(correction_values_df_1)] <- 0
   
@@ -649,38 +651,39 @@ for (d in 1:length(data_files)){
   
   # Create data frames with same dimensions and names as correction_df
   
-  is_rmt_df_2 <- correction_df
+  is_rmt_df_2 <- as.data.frame(matrix(0, 
+                                      nrow = nrow(correction_df), 
+                                      ncol = ncol(correction_df), 
+                                      dimnames = list(NULL, names(correction_df))))
   
   # Compute correction values and time ranges
   
   for (c in 1:(ncol(correction_df) - 1)){
-    
     is_rmt_df_2[,c] <- correction_df[,(c + 1)]/correction_df[,c]
     is_mt_diff_df[,c] <- correction_df[,(c + 1)] - correction_df[,c]
-    
   }
   
   # This is stored for reference during the first data file
   
   if (d == 1){
-    
-    reference_rmt_df_2 <-  is_rmt_df_2
-    
+    reference_rmt_df_2 <- is_rmt_df_2
   }
   
   # Compute correction values for rmts > 1
   
   correction_values_df_2 <- (is_rmt_df_2 - reference_rmt_df_2) / is_mt_diff_df
   
-  # Assign 0 to last column since no correction is applies to analytes without an internal standard eluting after it
+  # Analytes eluting after final internal standard can be estimated with final column from model 1
   
-  correction_values_df_2[,ncol(correction_values_df_2)] <- 0
+  correction_values_df_2[,(ncol(correction_values_df_2) + 1)] <- correction_values_df_1[,ncol(correction_values_df_1)]
   
   # Remove non finite values
   
-  is.na(correction_values_df_2)<-sapply(correction_values_df_2, is.infinite)
+  is.na(correction_values_df_2) <- sapply(correction_values_df_2, is.infinite)
   
   correction_values_df_2[is.na(correction_values_df_2)] <- 0
+  
+  print("Relative Migration Time Models Built Successfully")
   
   # 8. Metabolite  Peak Detection, Integration, and Filtering ----
   
@@ -817,11 +820,12 @@ for (d in 1:length(data_files)){
     
     for(i in 1:num_of_injections){
       
-      # correction only applies to compounds between first and last internal standard
+      # correction only applies to compounds after first internal standard. Additionally,
+      # if the rmt is between 0.98 and 1.02, do not apply correction as it is unnecessary 
       
       column_index <- which(colnames(correction_values_df_1) == rmt_internal_standard)
       
-      if(rmts[i] <= 1 & column_index > 1){
+      if(rmts[i] <= 0.98 & column_index > 1){
         
         correction_value <- correction_values_df_1[i ,rmt_internal_standard] * (correction_df[i ,rmt_internal_standard] - expected_mt[i])
         
@@ -831,7 +835,7 @@ for (d in 1:length(data_files)){
       
       column_index <- which(colnames(correction_values_df_2) == rmt_internal_standard)
       
-      if(rmts[i] > 1 & column_index < ncol(correction_values_df_2)){
+      if(rmts[i] >= 1.02){
         
         correction_value <- correction_values_df_2[i ,(column_index + 1)] * (expected_mt[i] - correction_df[i ,rmt_internal_standard])
         
