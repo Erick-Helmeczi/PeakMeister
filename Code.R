@@ -825,7 +825,7 @@ for (d in 1:length(data_files)){
       
       column_index <- which(colnames(correction_values_df_1) == rmt_internal_standard)
       
-      if(rmts[i] <= 0.98 & column_index > 1){
+      if(rmts[i] <= 0.99 & column_index > 1){
         
         correction_value <- correction_values_df_1[i ,rmt_internal_standard] * (correction_df[i ,rmt_internal_standard] - expected_mt[i])
         
@@ -835,7 +835,7 @@ for (d in 1:length(data_files)){
       
       column_index <- which(colnames(correction_values_df_2) == rmt_internal_standard)
       
-      if(rmts[i] >= 1.02){
+      if(rmts[i] >= 1.01){
         
         correction_value <- correction_values_df_2[i ,(column_index + 1)] * (expected_mt[i] - correction_df[i ,rmt_internal_standard])
         
