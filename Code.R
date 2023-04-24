@@ -41,7 +41,7 @@ dir.create(path = "csv Outputs",
 dir.create(path = "Plots",
            showWarnings = FALSE)
 
-# Generate plot sub-folders for ots of each internal standard and metabolite
+# Generate plot sub-folders for plots of each internal standard and metabolite
 
 name_vec <- c(is_df$name, mass_df$name)
 
