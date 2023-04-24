@@ -41,7 +41,7 @@ dir.create(path = "csv Outputs",
 dir.create(path = "Plots",
            showWarnings = FALSE)
 
-# Generate plot sub-folders for ots of each internal standard and metabolite
+# Generate plot sub-folders for plots of each internal standard and metabolite
 
 name_vec <- c(is_df$name, mass_df$name)
 
@@ -234,10 +234,10 @@ for (d in 1:length(data_files)){
   
   # Create a matrix of minimum and maximum m/z values for each internal standard and metabolite
   
-  mz <- c(is_df$mz, mass_df$mz)
+  mz_vec <- c(is_df$mz, mass_df$mz)
   
-  min <- mz - mz * mass_error_vec/1000000
-  max <- mz + mz * mass_error_vec/1000000
+  min <- mz_vec - mz_vec * mass_error_vec/1000000
+  max <- mz_vec + mz_vec * mass_error_vec/1000000
   mzr <- matrix(c(min, max), ncol = 2)
   
   # Extract electropherograms
@@ -588,47 +588,49 @@ for (d in 1:length(data_files)){
   
   # 7. Build Relative Migration Time Correction Models ----
   
-  # Only use internal standards
+  print("Building Relative Migration Time Models")
+  
+  # Collect migration time data for features specified as internal standards
   
   is_names_vec <- subset(is_df$name, is_df$class == "Internal Standard") %>%
     paste(., ".apex.seconds", sep = "")
   
   correction_df <- is_mt_df[,is_names_vec]
   
-  # Reorder internal columns from first internal standard to elute to last. Use order from first data
-  # file for all subsequent runs
+  # Reorder internal columns by elution order. Use order from first data file for all subsequent runs
   
   if (d == 1) {
-    
-    correction_df_order <- correction_df[,order(correction_df[1,])] %>%
+    correction_df_order <- correction_df[, order(correction_df[1,])] %>%
       suppressWarnings()
-    
   }
-
+  
   correction_df <- correction_df[colnames(correction_df_order)]
   
   ## Model 1 - For analytes with rmts <= 1 ----
   
   # Create two data frames with same dimensions and names as correction_df 
   
-  is_rmt_df_1 <- correction_df
-  is_mt_diff_df <-  correction_df
+  is_rmt_df_1 <- as.data.frame(matrix(0, 
+                                      nrow = nrow(correction_df), 
+                                      ncol = ncol(correction_df), 
+                                      dimnames = list(NULL, names(correction_df))))
+  
+  is_mt_diff_df <- as.data.frame(matrix(0, 
+                                        nrow = nrow(correction_df), 
+                                        ncol = ncol(correction_df), 
+                                        dimnames = list(NULL, names(correction_df))))
   
   # Compute correction values and time ranges
   
   for (c in 2:ncol(correction_df)){
-    
     is_rmt_df_1[,c] <- correction_df[,(c - 1)]/correction_df[,c]
     is_mt_diff_df[,c] <- correction_df[,c] - correction_df[,(c - 1)]
-    
   }
   
   # The data frame is.rmts.1 is stored for reference during the first data file
   
   if (d == 1){
-    
-    reference_rmt_df_1 <-  is_rmt_df_1
-    
+    reference_rmt_df_1 <- is_rmt_df_1
   }
   
   # Compute correction values 
@@ -641,7 +643,7 @@ for (d in 1:length(data_files)){
   
   # Remove non finite values
   
-  is.na(correction_values_df_1)<-sapply(correction_values_df_1, is.infinite)
+  is.na(correction_values_df_1) <- sapply(correction_values_df_1, is.infinite)
   
   correction_values_df_1[is.na(correction_values_df_1)] <- 0
   
@@ -649,38 +651,35 @@ for (d in 1:length(data_files)){
   
   # Create data frames with same dimensions and names as correction_df
   
-  is_rmt_df_2 <- correction_df
+  is_rmt_df_2 <- as.data.frame(matrix(0, 
+                                      nrow = nrow(correction_df), 
+                                      ncol = ncol(correction_df), 
+                                      dimnames = list(NULL, names(correction_df))))
   
   # Compute correction values and time ranges
   
   for (c in 1:(ncol(correction_df) - 1)){
-    
     is_rmt_df_2[,c] <- correction_df[,(c + 1)]/correction_df[,c]
     is_mt_diff_df[,c] <- correction_df[,(c + 1)] - correction_df[,c]
-    
   }
   
   # This is stored for reference during the first data file
   
   if (d == 1){
-    
-    reference_rmt_df_2 <-  is_rmt_df_2
-    
+    reference_rmt_df_2 <- is_rmt_df_2
   }
   
   # Compute correction values for rmts > 1
   
   correction_values_df_2 <- (is_rmt_df_2 - reference_rmt_df_2) / is_mt_diff_df
   
-  # Assign 0 to last column since no correction is applies to analytes without an internal standard eluting after it
-  
-  correction_values_df_2[,ncol(correction_values_df_2)] <- 0
-  
   # Remove non finite values
   
-  is.na(correction_values_df_2)<-sapply(correction_values_df_2, is.infinite)
+  is.na(correction_values_df_2) <- sapply(correction_values_df_2, is.infinite)
   
   correction_values_df_2[is.na(correction_values_df_2)] <- 0
+  
+  print("Relative Migration Time Models Built Successfully")
   
   # 8. Metabolite  Peak Detection, Integration, and Filtering ----
   
@@ -817,11 +816,12 @@ for (d in 1:length(data_files)){
     
     for(i in 1:num_of_injections){
       
-      # correction only applies to compounds between first and last internal standard
+      # correction only applies to compounds after first internal standard. Additionally,
+      # if the rmt is between 0.98 and 1.02, do not apply correction as it is unnecessary 
       
       column_index <- which(colnames(correction_values_df_1) == rmt_internal_standard)
       
-      if(rmts[i] <= 1 & column_index > 1){
+      if(mean(rmts) <= 0.99 & column_index > 1){
         
         correction_value <- correction_values_df_1[i ,rmt_internal_standard] * (correction_df[i ,rmt_internal_standard] - expected_mt[i])
         
@@ -831,7 +831,7 @@ for (d in 1:length(data_files)){
       
       column_index <- which(colnames(correction_values_df_2) == rmt_internal_standard)
       
-      if(rmts[i] > 1 & column_index < ncol(correction_values_df_2)){
+      if(mean(rmts) >= 1.01 & column_index < ncol(correction_df)){
         
         correction_value <- correction_values_df_2[i ,(column_index + 1)] * (expected_mt[i] - correction_df[i ,rmt_internal_standard])
         
@@ -1308,16 +1308,17 @@ for (d in 1:length(data_files)){
     
     ## Plot ----
     
-    mz <- c(is_df$mz, mass_df$mz)
-    
     name <- name_vec[n]
-    mz <- mz[n]
+    mz <- mz_vec[n]
+    start_mt <- start_df[1,n]
+    end_mt <- end_df[num_of_injections,n]
+    extra_space <- ifelse(start_mt > 70, 1, 0)
     
     ggplot(data = eie_df) +
       geom_line(aes(x = mt.seconds/60, y = eie_df[,n+1]), colour = "grey50") +
       theme_classic() +
-      coord_cartesian(xlim = c(start_df[1,n]/60-1, end_df[num_of_injections,n]/60+1),
-                      ylim = c(min(eie_df[(which(eie_df$mt.seconds == start_df[1,n]) - 60) : (which(eie_df$mt.seconds == end_df[1,n]) + 60),n + 1]) / 3,
+      coord_cartesian(xlim = c(start_mt/60 - extra_space, end_mt/60 + extra_space),
+                      ylim = c(min(eie_df[(which(eie_df$mt.seconds == start_mt) - extra_space) : (which(eie_df$mt.seconds == end_df[1,n]) + extra_space),n + 1]) / 3,
                                1.2 * max_peak_height)) +
       scale_y_continuous(name = "Ion Counts",
                          labels = function(x) format(x, scientific = TRUE),
