@@ -284,7 +284,118 @@ for (d in 1:length(data_files)){
   
   print("Electropherograms Smoothing Complete")
   
-  # 6. Internal Standard Peak Detection, Integration, and Filtering ----
+  # 6. Migration Factor Calculation ----
+  
+  if(d == 1){
+   
+    # Summarize user supplied migration time data
+    
+    metabolites_mt_df <- data.frame(name = mass_df$name, mass_df[,c((ncol(mass_df) - num_of_injections + 1) : ncol(mass_df))])
+    is_mt_df <- subset(is_df, is_df$class == "Internal Standard")
+    is_mt_df <- data.frame(name = is_mt_df$name, is_mt_df[,c((ncol(is_mt_df) - num_of_injections + 1) : ncol(is_mt_df))])
+    
+    # Determine IS on the left
+    
+    is_left_vec <- c(1:50)
+    
+    for (m in 1:nrow(metabolites_mt_df)){
+      
+      is_temp <- (metabolites_mt_df[m,2] - (is_mt_df[,2]))
+      is_temp <- set_names(is_temp, is_mt_df$name)
+      is_temp <- is_temp[which(sign(is_temp) == 1 | sign(is_temp) == 0)] %>%
+        which.min() %>%
+        names()
+      
+      if(length(is_temp) == 0){
+        is_temp <- "none"
+      }
+      
+      is_left_vec[m] <- is_temp
+    }
+    
+    # Determine IS on the Right
+    
+    is_right_vec <- c(1:50)
+    
+    for (m in 1:nrow(metabolites_mt_df)){
+      
+      is_temp <- (metabolites_mt_df[m,2] - (is_mt_df[,2]))
+      is_temp <- set_names(is_temp, is_mt_df$name)
+      is_temp <- is_temp[which(sign(is_temp) == -1| sign(is_temp) == 0)] %>%
+        which.max() %>%
+        names()
+      
+      if(length(is_temp) == 0){
+        is_temp <- "none"
+      }
+      
+      is_right_vec[m] <- is_temp
+    }
+    
+    # Compute migration factors
+    
+    mf_df <- matrix(NA, ncol = (num_of_injections + 1), nrow = nrow(metabolites_mt_df)) %>%
+      as.data.frame()
+    mf_df[,1] <- metabolites_mt_df$name
+    
+    summary_vec <- c(1:nrow(metabolites_mt_df))
+    
+    for (m in 1:nrow(metabolites_mt_df)){
+      for (i in 2:(num_of_injections + 1)){
+        
+        left <- is_left_vec[m]
+        right <- is_right_vec[m]
+        
+        # If a left or right internal standard does not exist, calculate the relative 
+        # migration time to the nearest internal standard instead
+        
+        if(left == "none"){
+          
+          mf_df[m,i] <- metabolites_mt_df[m,i] / is_mt_df[which(is_mt_df$name == right),i]
+          summary_vec[m] <- right
+          next
+          
+        }
+        
+        if(right == "none"){
+          
+          mf_df[m,i] <- metabolites_mt_df[m,i] / is_mt_df[which(is_mt_df$name == left),i]
+          summary_vec[m] <- left
+          next
+          
+        }
+        
+        # If the metabolite migrates near either neighboring internal standards, 
+        # calculate the relative migration time to the nearest internal standard instead
+        
+        if(metabolites_mt_df[m,2] / is_mt_df[which(is_mt_df$name == left),2] < 1.01){
+          
+          mf_df[m,i] <-metabolites_mt_df[m,i] / is_mt_df[which(is_mt_df$name == left),i]
+          summary_vec[m] <- left
+          next
+          
+        }
+        
+        if(metabolites_mt_df[m,2] / is_mt_df[which(is_mt_df$name == right),2] > 0.99){
+          
+          mf_df[m,i] <- metabolites_mt_df[m,i] / is_mt_df[which(is_mt_df$name == right),i]
+          summary_vec[m] <- right
+          next
+          
+        }
+        
+        # Calculate the retention factor
+        
+        mf_df[m,i] <- (metabolites_mt_df[m,i] - is_mt_df[which(is_mt_df$name == left),i]) / (is_mt_df[which(is_mt_df$name == right),i] - is_mt_df[which(is_mt_df$name == left),i])
+        summary_vec[m] <- "rf"
+        
+      }
+    }
+  }
+  
+  print("Migration Factor Calculation Complete")
+  
+  # 7. Internal Standard Peak Detection, Integration, and Filtering ----
   
   print("Performing Peak Picking and Filtering for Internal Standards")
   
@@ -586,101 +697,6 @@ for (d in 1:length(data_files)){
   
   print("Peak Picking and Filtering for Internal Standards Complete")
   
-  # 7. Build Relative Migration Time Correction Models ----
-  
-  print("Building Relative Migration Time Models")
-  
-  # Collect migration time data for features specified as internal standards
-  
-  is_names_vec <- subset(is_df$name, is_df$class == "Internal Standard") %>%
-    paste(., ".apex.seconds", sep = "")
-  
-  correction_df <- is_mt_df[,is_names_vec]
-  
-  # Reorder internal columns by elution order. Use order from first data file for all subsequent runs
-  
-  if (d == 1) {
-    correction_df_order <- correction_df[, order(correction_df[1,])] %>%
-      suppressWarnings()
-  }
-  
-  correction_df <- correction_df[colnames(correction_df_order)]
-  
-  ## Model 1 - For analytes with rmts <= 1 ----
-  
-  # Create two data frames with same dimensions and names as correction_df 
-  
-  is_rmt_df_1 <- as.data.frame(matrix(0, 
-                                      nrow = nrow(correction_df), 
-                                      ncol = ncol(correction_df), 
-                                      dimnames = list(NULL, names(correction_df))))
-  
-  is_mt_diff_df <- as.data.frame(matrix(0, 
-                                        nrow = nrow(correction_df), 
-                                        ncol = ncol(correction_df), 
-                                        dimnames = list(NULL, names(correction_df))))
-  
-  # Compute correction values and time ranges
-  
-  for (c in 2:ncol(correction_df)){
-    is_rmt_df_1[,c] <- correction_df[,(c - 1)]/correction_df[,c]
-    is_mt_diff_df[,c] <- correction_df[,c] - correction_df[,(c - 1)]
-  }
-  
-  # The data frame is.rmts.1 is stored for reference during the first data file
-  
-  if (d == 1){
-    reference_rmt_df_1 <- is_rmt_df_1
-  }
-  
-  # Compute correction values 
-  
-  correction_values_df_1 <- (is_rmt_df_1 - reference_rmt_df_1) / is_mt_diff_df
-  
-  # Assign 0 to first column since no correction is applies to analytes without an internal standard eluting before it
-  
-  correction_values_df_1[,1] <- 0
-  
-  # Remove non finite values
-  
-  is.na(correction_values_df_1) <- sapply(correction_values_df_1, is.infinite)
-  
-  correction_values_df_1[is.na(correction_values_df_1)] <- 0
-  
-  ## Model 2 - For analytes with rmts > 1 ----
-  
-  # Create data frames with same dimensions and names as correction_df
-  
-  is_rmt_df_2 <- as.data.frame(matrix(0, 
-                                      nrow = nrow(correction_df), 
-                                      ncol = ncol(correction_df), 
-                                      dimnames = list(NULL, names(correction_df))))
-  
-  # Compute correction values and time ranges
-  
-  for (c in 1:(ncol(correction_df) - 1)){
-    is_rmt_df_2[,c] <- correction_df[,(c + 1)]/correction_df[,c]
-    is_mt_diff_df[,c] <- correction_df[,(c + 1)] - correction_df[,c]
-  }
-  
-  # This is stored for reference during the first data file
-  
-  if (d == 1){
-    reference_rmt_df_2 <- is_rmt_df_2
-  }
-  
-  # Compute correction values for rmts > 1
-  
-  correction_values_df_2 <- (is_rmt_df_2 - reference_rmt_df_2) / is_mt_diff_df
-  
-  # Remove non finite values
-  
-  is.na(correction_values_df_2) <- sapply(correction_values_df_2, is.infinite)
-  
-  correction_values_df_2[is.na(correction_values_df_2)] <- 0
-  
-  print("Relative Migration Time Models Built Successfully")
-  
   # 8. Metabolite  Peak Detection, Integration, and Filtering ----
   
   print("Performing Peak Picking and Filtering for Analytes")
@@ -802,41 +818,26 @@ for (d in 1:length(data_files)){
     
     # Determine the expected migration times of the metabolites
     
-    rmt_internal_standard <- paste(mass_df$rmt.internal.standard[m - num_of_is], ".apex.seconds", sep = "")
-    
-    is_mt_vec <- is_mt_df[,rmt_internal_standard]
-    
-    rmts <- mass_df[m - num_of_is,(ncol(mass_df) - num_of_injections + 1):(ncol(mass_df))] %>%
-      t() %>%
-      as.vector()
-    
-    expected_mt <- rmts * is_mt_vec
-    
-    #### Apply relative migration time correction ----
-    
-    for(i in 1:num_of_injections){
+    n <- m - num_of_is
+    left_is <- paste(is_left_vec[n], ".apex.seconds", sep ="")
+    right_is <- paste(is_right_vec[n], ".apex.seconds", sep ="")
+    rmt_is <- paste(summary_vec[n], ".apex.seconds", sep ="")
+
+    if(summary_vec[n] == "rf"){
       
-      # correction only applies to compounds after first internal standard. Additionally,
-      # if the rmt is between 0.98 and 1.02, do not apply correction as it is unnecessary 
+      mf_vec <- mf_df[n,2:length(mf_df)] %>%
+        unlist() %>%
+        unname()
+
+      expected_mt <- mf_vec * (is_mt_df[,which(colnames(is_mt_df) == right_is)] - is_mt_df[,which(colnames(is_mt_df) == left_is)]) + is_mt_df[,which(colnames(is_mt_df) == left_is)]
       
-      column_index <- which(colnames(correction_values_df_1) == rmt_internal_standard)
+    }else{
+    
+      mf_vec <- mf_df[n,2:length(mf_df)] %>%
+        unlist() %>%
+        unname()
       
-      if(mean(rmts) <= 0.99 & column_index > 1){
-        
-        correction_value <- correction_values_df_1[i ,rmt_internal_standard] * (correction_df[i ,rmt_internal_standard] - expected_mt[i])
-        
-        expected_mt[i] <- (rmts[i] + correction_value) * is_mt_vec[i]
-        
-      }
-      
-      column_index <- which(colnames(correction_values_df_2) == rmt_internal_standard)
-      
-      if(mean(rmts) >= 1.01 & column_index < ncol(correction_df)){
-        
-        correction_value <- correction_values_df_2[i ,(column_index + 1)] * (expected_mt[i] - correction_df[i ,rmt_internal_standard])
-        
-        expected_mt[i] <- (rmts[i] + correction_value) * is_mt_vec[i]
-      }
+      expected_mt <- mf_vec * is_mt_df[,which(colnames(is_mt_df) == rmt_is)] 
       
     }
     
@@ -1313,12 +1314,13 @@ for (d in 1:length(data_files)){
     start_mt <- start_df[1,n]
     end_mt <- end_df[num_of_injections,n]
     extra_space <- ifelse(start_mt > 70, 1, 0)
+    ymin = min(eie_df[(which(eie_df$mt.seconds == start_mt) - extra_space * 60) : (which(eie_df$mt.seconds == end_df[1,n]) + extra_space * 60),n + 1])
     
     ggplot(data = eie_df) +
       geom_line(aes(x = mt.seconds/60, y = eie_df[,n+1]), colour = "grey50") +
       theme_classic() +
       coord_cartesian(xlim = c(start_mt/60 - extra_space, end_mt/60 + extra_space),
-                      ylim = c(min(eie_df[(which(eie_df$mt.seconds == start_mt) - extra_space) : (which(eie_df$mt.seconds == end_df[1,n]) + extra_space),n + 1]) / 3,
+                      ylim = c(ymin / 3,
                                1.2 * max_peak_height)) +
       scale_y_continuous(name = "Ion Counts",
                          labels = function(x) format(x, scientific = TRUE),
