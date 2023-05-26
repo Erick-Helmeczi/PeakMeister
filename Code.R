@@ -1012,14 +1012,6 @@ for (d in 1:length(data_files)){
     
     peak_space_tol_check <- between(diff(filtered_peaks_df[,2]), median_space_lower_lim, median_space_upper_lim)
     
-    # Do not include peaks where expected migration time > total run time
-    
-    peak_space_tol_check <- peak_space_tol_check[-c(late_peaks - 1)]
-    
-    # Check if peaks migrate within the tolerance limits
-    
-    peak_space_tol_check <- between(diff(filtered_peaks_df[,2]), median_space_lower_lim, median_space_upper_lim)
-    
     if(all(peak_space_tol_check) != TRUE){
       bad_space <- which(peak_space_tol_check == FALSE)
     }else{
@@ -1060,8 +1052,6 @@ for (d in 1:length(data_files)){
       peak_tolerance <- filtered_peaks_df[good_peaks,2] %>%
         diff() %>%
         median () / count
-      
-      # find the nearest good peak neighbor for each bad peak
       
       for (b in 1:length(bad_peaks)){
         
@@ -1335,16 +1325,16 @@ for (d in 1:length(data_files)){
                   alpha =0.4) +
       geom_text(data = ann_df,
                 label = ann_df$peak.number,
-                size  = 5,
+                size  = 7,
                 family = "sans",
                 aes(x = peak.apex.seconds/60,
-                    y = peak.height.counts + 0.07 * max_peak_height)) +
+                    y = peak.height.counts + 0.08 * max_peak_height)) +
       geom_text(data = ann_df,
                 label = ann_df$comment,
-                size  = 5,
+                size  = 7,
                 family = "sans",
                 aes(x = peak.apex.seconds/60,
-                    y = peak.height.counts + 0.11 * max_peak_height)) +
+                    y = peak.height.counts + 0.12 * max_peak_height)) +
       geom_segment(data = ann_df,
                    aes(x = peak.apex.seconds/60,
                        y = peak.height.counts + 0.04 * max_peak_height,
@@ -1352,7 +1342,7 @@ for (d in 1:length(data_files)){
                        yend = peak.height.counts + 0.01 * max_peak_height),
                    arrow = arrow(length = unit(0.15, "cm"), type = "closed")) +
       theme(legend.position = "none",
-            text = element_text(size = 15, family = "sans"))
+            text = element_text(size = 25, family = "sans"))
     
     # Save plots to their respective folders within the "Plots" folder
     
@@ -1398,12 +1388,6 @@ for (d in 1:length(data_files)){
                       peaks_df[,seq(from = 2, to = ncol(peaks_df), by = 7)] / 60)
   peak_mt_df$file.name[2:num_of_injections] <- ""
   colnames(peak_mt_df)[3:(length(name_vec) + 2)] <- name_vec
-  
-  # Update values to include <LOD and Interfered
-  
-  for (i in 1:num_of_injections){
-    peak_mt_df[i,3:ncol(peak_mt_df)] <- ifelse(comment_df[i,] == "", peak_mt_df[i, 3:ncol(peak_mt_df)], comment_df[i,])
-  }
   
   if(d == 1){
     peak_mt_report = peak_mt_df
