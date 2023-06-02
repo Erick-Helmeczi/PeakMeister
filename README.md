@@ -13,4 +13,4 @@ The motivation behind this program was to develop software that can reduce the b
 4. Peaks are detected and filtered using user defined parameters.
 5. Plots are generated and saved for users to review to ensure correct peak peaking and integration occured. 
 6. Peak area and migration time data is further summarized in csv files.
-7. A widnows progress bar and print statements have been implimented so users can have an estimate of completetion. 
+7. A windows progress bar and print statements have been implimented so users can have an estimate of completetion. 
