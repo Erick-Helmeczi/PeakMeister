@@ -12,7 +12,7 @@ pacman::p_load("tidyverse", "stats", "DescTools", "xcms", "rlang",
 
 # Import the user supplied tables of metabolites, internal standards, and general parameters
 
-mass_df <- readxl::read_excel("Mass List and Parameters.xlsx") %>%
+mass_df <- readxl::read_excel("Mass List and Parameters.xlsx", sheet = 1) %>%
   as.data.frame()
 
 is_df <- readxl::read_excel("Mass List and Parameters.xlsx", sheet = 2) %>%
@@ -825,7 +825,7 @@ for (d in 1:length(data_files)){
 
     if(summary_vec[n] == "rf"){
       
-      mf_vec <- mf_df[n,2:length(mf_df)] %>%
+      mf_vec <- mf_df[n,2:ncol(mf_df)] %>%
         unlist() %>%
         unname()
 
@@ -833,7 +833,7 @@ for (d in 1:length(data_files)){
       
     }else{
     
-      mf_vec <- mf_df[n,2:length(mf_df)] %>%
+      mf_vec <- mf_df[n,2:ncol(mf_df)] %>%
         unlist() %>%
         unname()
       
@@ -995,22 +995,21 @@ for (d in 1:length(data_files)){
     
     # Get peak space tolerance
     
-    median_space_tol <- mass_df$peak.space.tolerance.percent[m - num_of_is] / 100
+    space_tol <- mass_df$peak.space.tolerance.percent[m - num_of_is] / 100
     
-    # Calculate median peak space
+    # Make a vector containing all the expected space lengths
     
-    median_space <- filtered_peaks_df[,2] %>%
-      diff() %>%
-      median()
+    space_vec <- expected_mt %>%
+      diff()
     
     # Define upper and lower peak space limits
     
-    median_space_lower_lim <- median_space - median_space * median_space_tol
-    median_space_upper_lim <- median_space + median_space * median_space_tol
+    space_lower_lim <- space_vec - space_vec * space_tol
+    space_upper_lim <- space_vec + space_vec * space_tol
     
     # Check if peaks migrate within the tolerance limits
     
-    peak_space_tol_check <- between(diff(filtered_peaks_df[,2]), median_space_lower_lim, median_space_upper_lim)
+    peak_space_tol_check <- between(diff(filtered_peaks_df[,2]), space_lower_lim, space_upper_lim)
     
     if(all(peak_space_tol_check) != TRUE){
       bad_space <- which(peak_space_tol_check == FALSE)
@@ -1033,23 +1032,23 @@ for (d in 1:length(data_files)){
     
     filtered_peaks_df_retain <- filtered_peaks_df
     
-    # set count limit to determine when the algoithm fails
+    # set count limit to determine when the algorithm fails
     
     count_limit = 100
     
     # Identify bad peaks, and replace them with peaks meeting peak space criteria
     # If the number of bad peaks is equal to the number of injections, do not apply this filter
     
-    while(length(bad_peaks) > 0 & length(bad_peaks) < num_of_injections & count < count_limit){
+    while(length(bad_peaks) > 0 & length(bad_peaks) < (num_of_injections - 1) & count < count_limit){
       
       # define remaining peaks which are correctly assigned (good peaks)
       
       good_peaks <- c(1:num_of_injections) %>%
         setdiff(., c(bad_peaks))
       
-      # Use a quarter of the mt difference between good peaks as a tolerance to find the new peaks
+      # Use the median of the expected peak space times to find peaks
       
-      peak_tolerance <- filtered_peaks_df[good_peaks,2] %>%
+      peak_tolerance <- expected_mt %>%
         diff() %>%
         median () / count
       
@@ -1064,7 +1063,7 @@ for (d in 1:length(data_files)){
         # calculate the expected migration time 
         
         expected_mt <- filtered_peaks_df[good_peaks[nearest_good_peak], 2] - 
-          (good_peaks[nearest_good_peak] - bad_peaks[b]) * median_space
+          (good_peaks[nearest_good_peak] - bad_peaks[b]) * median(space_vec)
         
         # find peaks nearest to the expected migration time within the tolerance
         
@@ -1104,7 +1103,7 @@ for (d in 1:length(data_files)){
         # if only one peak is found
         
         filtered_peaks_df[bad_peaks[b],] <- peaks
-
+        
       }
       
       count = count + 1
@@ -1127,14 +1126,15 @@ for (d in 1:length(data_files)){
       
     }
     
-    # Summarize filtered.peak_df data in metabolite.peak_df
+    # Summarize filtered.peak_df data in metabolite_peak_df
     
     if(m == (num_of_is + 1)){
       metabolite_peaks_df = filtered_peaks_df
     }else{
       metabolite_peaks_df = cbind(metabolite_peaks_df, filtered_peaks_df)  
     }
-  }
+    
+ }
   
   ### Filter peaks below LOD ----
   
