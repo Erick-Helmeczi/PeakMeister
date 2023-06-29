@@ -12,7 +12,7 @@ pacman::p_load("tidyverse", "stats", "DescTools", "xcms", "rlang",
 
 # Import the user supplied tables of metabolites, internal standards, and general parameters
 
-mass_df <- readxl::read_excel("Mass List and Parameters.xlsx") %>%
+mass_df <- readxl::read_excel("Mass List and Parameters.xlsx", sheet = 1) %>%
   as.data.frame()
 
 is_df <- readxl::read_excel("Mass List and Parameters.xlsx", sheet = 2) %>%
@@ -284,7 +284,118 @@ for (d in 1:length(data_files)){
   
   print("Electropherograms Smoothing Complete")
   
-  # 6. Internal Standard Peak Detection, Integration, and Filtering ----
+  # 6. Migration Factor Calculation ----
+  
+  if(d == 1){
+   
+    # Summarize user supplied migration time data
+    
+    metabolites_mt_df <- data.frame(name = mass_df$name, mass_df[,c((ncol(mass_df) - num_of_injections + 1) : ncol(mass_df))])
+    is_mt_df <- subset(is_df, is_df$class == "Internal Standard")
+    is_mt_df <- data.frame(name = is_mt_df$name, is_mt_df[,c((ncol(is_mt_df) - num_of_injections + 1) : ncol(is_mt_df))])
+    
+    # Determine IS on the left
+    
+    is_left_vec <- c(1:50)
+    
+    for (m in 1:nrow(metabolites_mt_df)){
+      
+      is_temp <- (metabolites_mt_df[m,2] - (is_mt_df[,2]))
+      is_temp <- set_names(is_temp, is_mt_df$name)
+      is_temp <- is_temp[which(sign(is_temp) == 1 | sign(is_temp) == 0)] %>%
+        which.min() %>%
+        names()
+      
+      if(length(is_temp) == 0){
+        is_temp <- "none"
+      }
+      
+      is_left_vec[m] <- is_temp
+    }
+    
+    # Determine IS on the Right
+    
+    is_right_vec <- c(1:50)
+    
+    for (m in 1:nrow(metabolites_mt_df)){
+      
+      is_temp <- (metabolites_mt_df[m,2] - (is_mt_df[,2]))
+      is_temp <- set_names(is_temp, is_mt_df$name)
+      is_temp <- is_temp[which(sign(is_temp) == -1| sign(is_temp) == 0)] %>%
+        which.max() %>%
+        names()
+      
+      if(length(is_temp) == 0){
+        is_temp <- "none"
+      }
+      
+      is_right_vec[m] <- is_temp
+    }
+    
+    # Compute migration factors
+    
+    mf_df <- matrix(NA, ncol = (num_of_injections + 1), nrow = nrow(metabolites_mt_df)) %>%
+      as.data.frame()
+    mf_df[,1] <- metabolites_mt_df$name
+    
+    summary_vec <- c(1:nrow(metabolites_mt_df))
+    
+    for (m in 1:nrow(metabolites_mt_df)){
+      for (i in 2:(num_of_injections + 1)){
+        
+        left <- is_left_vec[m]
+        right <- is_right_vec[m]
+        
+        # If a left or right internal standard does not exist, calculate the relative 
+        # migration time to the nearest internal standard instead
+        
+        if(left == "none"){
+          
+          mf_df[m,i] <- metabolites_mt_df[m,i] / is_mt_df[which(is_mt_df$name == right),i]
+          summary_vec[m] <- right
+          next
+          
+        }
+        
+        if(right == "none"){
+          
+          mf_df[m,i] <- metabolites_mt_df[m,i] / is_mt_df[which(is_mt_df$name == left),i]
+          summary_vec[m] <- left
+          next
+          
+        }
+        
+        # If the metabolite migrates near either neighboring internal standards, 
+        # calculate the relative migration time to the nearest internal standard instead
+        
+        if(metabolites_mt_df[m,2] / is_mt_df[which(is_mt_df$name == left),2] < 1.01){
+          
+          mf_df[m,i] <-metabolites_mt_df[m,i] / is_mt_df[which(is_mt_df$name == left),i]
+          summary_vec[m] <- left
+          next
+          
+        }
+        
+        if(metabolites_mt_df[m,2] / is_mt_df[which(is_mt_df$name == right),2] > 0.99){
+          
+          mf_df[m,i] <- metabolites_mt_df[m,i] / is_mt_df[which(is_mt_df$name == right),i]
+          summary_vec[m] <- right
+          next
+          
+        }
+        
+        # Calculate the retention factor
+        
+        mf_df[m,i] <- (metabolites_mt_df[m,i] - is_mt_df[which(is_mt_df$name == left),i]) / (is_mt_df[which(is_mt_df$name == right),i] - is_mt_df[which(is_mt_df$name == left),i])
+        summary_vec[m] <- "rf"
+        
+      }
+    }
+  }
+  
+  print("Migration Factor Calculation Complete")
+  
+  # 7. Internal Standard Peak Detection, Integration, and Filtering ----
   
   print("Performing Peak Picking and Filtering for Internal Standards")
   
@@ -586,101 +697,6 @@ for (d in 1:length(data_files)){
   
   print("Peak Picking and Filtering for Internal Standards Complete")
   
-  # 7. Build Relative Migration Time Correction Models ----
-  
-  print("Building Relative Migration Time Models")
-  
-  # Collect migration time data for features specified as internal standards
-  
-  is_names_vec <- subset(is_df$name, is_df$class == "Internal Standard") %>%
-    paste(., ".apex.seconds", sep = "")
-  
-  correction_df <- is_mt_df[,is_names_vec]
-  
-  # Reorder internal columns by elution order. Use order from first data file for all subsequent runs
-  
-  if (d == 1) {
-    correction_df_order <- correction_df[, order(correction_df[1,])] %>%
-      suppressWarnings()
-  }
-  
-  correction_df <- correction_df[colnames(correction_df_order)]
-  
-  ## Model 1 - For analytes with rmts <= 1 ----
-  
-  # Create two data frames with same dimensions and names as correction_df 
-  
-  is_rmt_df_1 <- as.data.frame(matrix(0, 
-                                      nrow = nrow(correction_df), 
-                                      ncol = ncol(correction_df), 
-                                      dimnames = list(NULL, names(correction_df))))
-  
-  is_mt_diff_df <- as.data.frame(matrix(0, 
-                                        nrow = nrow(correction_df), 
-                                        ncol = ncol(correction_df), 
-                                        dimnames = list(NULL, names(correction_df))))
-  
-  # Compute correction values and time ranges
-  
-  for (c in 2:ncol(correction_df)){
-    is_rmt_df_1[,c] <- correction_df[,(c - 1)]/correction_df[,c]
-    is_mt_diff_df[,c] <- correction_df[,c] - correction_df[,(c - 1)]
-  }
-  
-  # The data frame is.rmts.1 is stored for reference during the first data file
-  
-  if (d == 1){
-    reference_rmt_df_1 <- is_rmt_df_1
-  }
-  
-  # Compute correction values 
-  
-  correction_values_df_1 <- (is_rmt_df_1 - reference_rmt_df_1) / is_mt_diff_df
-  
-  # Assign 0 to first column since no correction is applies to analytes without an internal standard eluting before it
-  
-  correction_values_df_1[,1] <- 0
-  
-  # Remove non finite values
-  
-  is.na(correction_values_df_1) <- sapply(correction_values_df_1, is.infinite)
-  
-  correction_values_df_1[is.na(correction_values_df_1)] <- 0
-  
-  ## Model 2 - For analytes with rmts > 1 ----
-  
-  # Create data frames with same dimensions and names as correction_df
-  
-  is_rmt_df_2 <- as.data.frame(matrix(0, 
-                                      nrow = nrow(correction_df), 
-                                      ncol = ncol(correction_df), 
-                                      dimnames = list(NULL, names(correction_df))))
-  
-  # Compute correction values and time ranges
-  
-  for (c in 1:(ncol(correction_df) - 1)){
-    is_rmt_df_2[,c] <- correction_df[,(c + 1)]/correction_df[,c]
-    is_mt_diff_df[,c] <- correction_df[,(c + 1)] - correction_df[,c]
-  }
-  
-  # This is stored for reference during the first data file
-  
-  if (d == 1){
-    reference_rmt_df_2 <- is_rmt_df_2
-  }
-  
-  # Compute correction values for rmts > 1
-  
-  correction_values_df_2 <- (is_rmt_df_2 - reference_rmt_df_2) / is_mt_diff_df
-  
-  # Remove non finite values
-  
-  is.na(correction_values_df_2) <- sapply(correction_values_df_2, is.infinite)
-  
-  correction_values_df_2[is.na(correction_values_df_2)] <- 0
-  
-  print("Relative Migration Time Models Built Successfully")
-  
   # 8. Metabolite  Peak Detection, Integration, and Filtering ----
   
   print("Performing Peak Picking and Filtering for Analytes")
@@ -802,41 +818,26 @@ for (d in 1:length(data_files)){
     
     # Determine the expected migration times of the metabolites
     
-    rmt_internal_standard <- paste(mass_df$rmt.internal.standard[m - num_of_is], ".apex.seconds", sep = "")
-    
-    is_mt_vec <- is_mt_df[,rmt_internal_standard]
-    
-    rmts <- mass_df[m - num_of_is,(ncol(mass_df) - num_of_injections + 1):(ncol(mass_df))] %>%
-      t() %>%
-      as.vector()
-    
-    expected_mt <- rmts * is_mt_vec
-    
-    #### Apply relative migration time correction ----
-    
-    for(i in 1:num_of_injections){
+    n <- m - num_of_is
+    left_is <- paste(is_left_vec[n], ".apex.seconds", sep ="")
+    right_is <- paste(is_right_vec[n], ".apex.seconds", sep ="")
+    rmt_is <- paste(summary_vec[n], ".apex.seconds", sep ="")
+
+    if(summary_vec[n] == "rf"){
       
-      # correction only applies to compounds after first internal standard. Additionally,
-      # if the rmt is between 0.98 and 1.02, do not apply correction as it is unnecessary 
+      mf_vec <- mf_df[n,2:ncol(mf_df)] %>%
+        unlist() %>%
+        unname()
+
+      expected_mt <- mf_vec * (is_mt_df[,which(colnames(is_mt_df) == right_is)] - is_mt_df[,which(colnames(is_mt_df) == left_is)]) + is_mt_df[,which(colnames(is_mt_df) == left_is)]
       
-      column_index <- which(colnames(correction_values_df_1) == rmt_internal_standard)
+    }else{
+    
+      mf_vec <- mf_df[n,2:ncol(mf_df)] %>%
+        unlist() %>%
+        unname()
       
-      if(mean(rmts) <= 0.99 & column_index > 1){
-        
-        correction_value <- correction_values_df_1[i ,rmt_internal_standard] * (correction_df[i ,rmt_internal_standard] - expected_mt[i])
-        
-        expected_mt[i] <- (rmts[i] + correction_value) * is_mt_vec[i]
-        
-      }
-      
-      column_index <- which(colnames(correction_values_df_2) == rmt_internal_standard)
-      
-      if(mean(rmts) >= 1.01 & column_index < ncol(correction_df)){
-        
-        correction_value <- correction_values_df_2[i ,(column_index + 1)] * (expected_mt[i] - correction_df[i ,rmt_internal_standard])
-        
-        expected_mt[i] <- (rmts[i] + correction_value) * is_mt_vec[i]
-      }
+      expected_mt <- mf_vec * is_mt_df[,which(colnames(is_mt_df) == rmt_is)] 
       
     }
     
@@ -994,30 +995,21 @@ for (d in 1:length(data_files)){
     
     # Get peak space tolerance
     
-    median_space_tol <- mass_df$peak.space.tolerance.percent[m - num_of_is] / 100
+    space_tol <- mass_df$peak.space.tolerance.percent[m - num_of_is] / 100
     
-    # Calculate median peak space
+    # Make a vector containing all the expected space lengths
     
-    median_space <- filtered_peaks_df[,2] %>%
-      diff() %>%
-      median()
+    space_vec <- expected_mt %>%
+      diff()
     
     # Define upper and lower peak space limits
     
-    median_space_lower_lim <- median_space - median_space * median_space_tol
-    median_space_upper_lim <- median_space + median_space * median_space_tol
+    space_lower_lim <- space_vec - space_vec * space_tol
+    space_upper_lim <- space_vec + space_vec * space_tol
     
     # Check if peaks migrate within the tolerance limits
     
-    peak_space_tol_check <- between(diff(filtered_peaks_df[,2]), median_space_lower_lim, median_space_upper_lim)
-    
-    # Do not include peaks where expected migration time > total run time
-    
-    peak_space_tol_check <- peak_space_tol_check[-c(late_peaks - 1)]
-    
-    # Check if peaks migrate within the tolerance limits
-    
-    peak_space_tol_check <- between(diff(filtered_peaks_df[,2]), median_space_lower_lim, median_space_upper_lim)
+    peak_space_tol_check <- between(diff(filtered_peaks_df[,2]), space_lower_lim, space_upper_lim)
     
     if(all(peak_space_tol_check) != TRUE){
       bad_space <- which(peak_space_tol_check == FALSE)
@@ -1040,27 +1032,25 @@ for (d in 1:length(data_files)){
     
     filtered_peaks_df_retain <- filtered_peaks_df
     
-    # set count limit to determine when the algoithm fails
+    # set count limit to determine when the algorithm fails
     
     count_limit = 100
     
     # Identify bad peaks, and replace them with peaks meeting peak space criteria
     # If the number of bad peaks is equal to the number of injections, do not apply this filter
     
-    while(length(bad_peaks) > 0 & length(bad_peaks) < num_of_injections & count < count_limit){
+    while(length(bad_peaks) > 0 & length(bad_peaks) < (num_of_injections - 1) & count < count_limit){
       
       # define remaining peaks which are correctly assigned (good peaks)
       
       good_peaks <- c(1:num_of_injections) %>%
         setdiff(., c(bad_peaks))
       
-      # Use a quarter of the mt difference between good peaks as a tolerance to find the new peaks
+      # Use the median of the expected peak space times to find peaks
       
-      peak_tolerance <- filtered_peaks_df[good_peaks,2] %>%
+      peak_tolerance <- expected_mt %>%
         diff() %>%
         median () / count
-      
-      # find the nearest good peak neighbor for each bad peak
       
       for (b in 1:length(bad_peaks)){
         
@@ -1073,7 +1063,7 @@ for (d in 1:length(data_files)){
         # calculate the expected migration time 
         
         expected_mt <- filtered_peaks_df[good_peaks[nearest_good_peak], 2] - 
-          (good_peaks[nearest_good_peak] - bad_peaks[b]) * median_space
+          (good_peaks[nearest_good_peak] - bad_peaks[b]) * median(space_vec)
         
         # find peaks nearest to the expected migration time within the tolerance
         
@@ -1113,7 +1103,7 @@ for (d in 1:length(data_files)){
         # if only one peak is found
         
         filtered_peaks_df[bad_peaks[b],] <- peaks
-
+        
       }
       
       count = count + 1
@@ -1136,14 +1126,15 @@ for (d in 1:length(data_files)){
       
     }
     
-    # Summarize filtered.peak_df data in metabolite.peak_df
+    # Summarize filtered.peak_df data in metabolite_peak_df
     
     if(m == (num_of_is + 1)){
       metabolite_peaks_df = filtered_peaks_df
     }else{
       metabolite_peaks_df = cbind(metabolite_peaks_df, filtered_peaks_df)  
     }
-  }
+    
+ }
   
   ### Filter peaks below LOD ----
   
@@ -1313,12 +1304,13 @@ for (d in 1:length(data_files)){
     start_mt <- start_df[1,n]
     end_mt <- end_df[num_of_injections,n]
     extra_space <- ifelse(start_mt > 70, 1, 0)
+    ymin = min(eie_df[(which(eie_df$mt.seconds == start_mt) - extra_space * 60) : (which(eie_df$mt.seconds == end_df[1,n]) + extra_space * 60),n + 1])
     
     ggplot(data = eie_df) +
       geom_line(aes(x = mt.seconds/60, y = eie_df[,n+1]), colour = "grey50") +
       theme_classic() +
       coord_cartesian(xlim = c(start_mt/60 - extra_space, end_mt/60 + extra_space),
-                      ylim = c(min(eie_df[(which(eie_df$mt.seconds == start_mt) - extra_space) : (which(eie_df$mt.seconds == end_df[1,n]) + extra_space),n + 1]) / 3,
+                      ylim = c(ymin / 3,
                                1.2 * max_peak_height)) +
       scale_y_continuous(name = "Ion Counts",
                          labels = function(x) format(x, scientific = TRUE),
@@ -1333,16 +1325,16 @@ for (d in 1:length(data_files)){
                   alpha =0.4) +
       geom_text(data = ann_df,
                 label = ann_df$peak.number,
-                size  = 5,
+                size  = 7,
                 family = "sans",
                 aes(x = peak.apex.seconds/60,
-                    y = peak.height.counts + 0.07 * max_peak_height)) +
+                    y = peak.height.counts + 0.08 * max_peak_height)) +
       geom_text(data = ann_df,
                 label = ann_df$comment,
-                size  = 5,
+                size  = 7,
                 family = "sans",
                 aes(x = peak.apex.seconds/60,
-                    y = peak.height.counts + 0.11 * max_peak_height)) +
+                    y = peak.height.counts + 0.12 * max_peak_height)) +
       geom_segment(data = ann_df,
                    aes(x = peak.apex.seconds/60,
                        y = peak.height.counts + 0.04 * max_peak_height,
@@ -1350,7 +1342,7 @@ for (d in 1:length(data_files)){
                        yend = peak.height.counts + 0.01 * max_peak_height),
                    arrow = arrow(length = unit(0.15, "cm"), type = "closed")) +
       theme(legend.position = "none",
-            text = element_text(size = 15, family = "sans"))
+            text = element_text(size = 25, family = "sans"))
     
     # Save plots to their respective folders within the "Plots" folder
     
@@ -1396,12 +1388,6 @@ for (d in 1:length(data_files)){
                       peaks_df[,seq(from = 2, to = ncol(peaks_df), by = 7)] / 60)
   peak_mt_df$file.name[2:num_of_injections] <- ""
   colnames(peak_mt_df)[3:(length(name_vec) + 2)] <- name_vec
-  
-  # Update values to include <LOD and Interfered
-  
-  for (i in 1:num_of_injections){
-    peak_mt_df[i,3:ncol(peak_mt_df)] <- ifelse(comment_df[i,] == "", peak_mt_df[i, 3:ncol(peak_mt_df)], comment_df[i,])
-  }
   
   if(d == 1){
     peak_mt_report = peak_mt_df
