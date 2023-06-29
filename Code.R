@@ -296,7 +296,7 @@ for (d in 1:length(data_files)){
     
     # Determine IS on the left
     
-    is_left_vec <- c(1:50)
+    is_left_vec <- c(1:num_of_metabolites)
     
     for (m in 1:nrow(metabolites_mt_df)){
       
@@ -315,7 +315,7 @@ for (d in 1:length(data_files)){
     
     # Determine IS on the Right
     
-    is_right_vec <- c(1:50)
+    is_right_vec <- c(1:num_of_metabolites)
     
     for (m in 1:nrow(metabolites_mt_df)){
       
