@@ -60,6 +60,132 @@ data_files <- list.files(path = "mzML Files",
 
 data_file_names <- list.files(path = "mzML Files")
 
+# 2. Migration Factor Calculation ----
+
+# Summarize user supplied migration time data
+
+metabolites_mt_df <- data.frame(name = mass_df$name, mass_df[,c((ncol(mass_df) - num_of_injections + 1) : ncol(mass_df))])
+is_mt_df <- subset(is_df, is_df$class == "Internal Standard")
+is_mt_df <- data.frame(name = is_mt_df$name, is_mt_df[,c((ncol(is_mt_df) - num_of_injections + 1) : ncol(is_mt_df))])
+
+# Determine IS on the left
+
+is_left_vec <- c(1:num_of_metabolites)
+
+for (m in 1:nrow(metabolites_mt_df)){
+  
+  is_temp <- (metabolites_mt_df[m,2] - (is_mt_df[,2]))
+  is_temp <- set_names(is_temp, is_mt_df$name)
+  is_temp <- is_temp[which(sign(is_temp) == 1 | sign(is_temp) == 0)] %>%
+    which.min() %>%
+    names()
+  
+  if(length(is_temp) == 0){
+    is_temp <- "none"
+  }
+  
+  is_left_vec[m] <- is_temp
+}
+
+# Determine IS on the right
+
+is_right_vec <- c(1:num_of_metabolites)
+
+for (m in 1:nrow(metabolites_mt_df)){
+  
+  is_temp <- (metabolites_mt_df[m,2] - (is_mt_df[,2]))
+  is_temp <- set_names(is_temp, is_mt_df$name)
+  is_temp <- is_temp[which(sign(is_temp) == -1| sign(is_temp) == 0)] %>%
+    which.max() %>%
+    names()
+  
+  if(length(is_temp) == 0){
+    is_temp <- "none"
+  }
+  
+  is_right_vec[m] <- is_temp
+}
+
+# Compute migration index
+
+mi_df <- matrix(NA, ncol = (num_of_injections + 1), nrow = nrow(metabolites_mt_df)) %>%
+  as.data.frame()
+mi_df[,1] <- metabolites_mt_df$name
+
+summary_vec <- c(1:nrow(metabolites_mt_df))
+
+for (m in 1:nrow(metabolites_mt_df)){
+  for (i in 2:(num_of_injections + 1)){
+    
+    left <- is_left_vec[m]
+    right <- is_right_vec[m]
+    
+    # If a left or right internal standard does not exist, calculate the relative 
+    # migration time to the nearest internal standard instead
+    
+    if(left == "none"){
+      
+      mi_df[m,i] <- metabolites_mt_df[m,i] / is_mt_df[which(is_mt_df$name == right),i]
+      summary_vec[m] <- right
+      next
+      
+    }
+    
+    if(right == "none"){
+      
+      mi_df[m,i] <- metabolites_mt_df[m,i] / is_mt_df[which(is_mt_df$name == left),i]
+      summary_vec[m] <- left
+      next
+      
+    }
+    
+    # If the metabolite migrates near either neighboring internal standards, 
+    # calculate the relative migration time to the nearest internal standard instead
+    
+    if(metabolites_mt_df[m,2] / is_mt_df[which(is_mt_df$name == left),2] < 1.01){
+      
+      mi_df[m,i] <- metabolites_mt_df[m,i] / is_mt_df[which(is_mt_df$name == left),i]
+      summary_vec[m] <- left
+      is_right_vec[m] <- "none"
+      next
+      
+    }
+    
+    if(metabolites_mt_df[m,2] / is_mt_df[which(is_mt_df$name == right),2] > 0.99){
+      
+      mi_df[m,i] <- metabolites_mt_df[m,i] / is_mt_df[which(is_mt_df$name == right),i]
+      summary_vec[m] <- right
+      is_left_vec[m] <- "none"
+      next
+      
+    }
+    
+    # Calculate the migration factor
+    
+    mi_df[m,i] <- (metabolites_mt_df[m,i] - is_mt_df[which(is_mt_df$name == left),i]) / (is_mt_df[which(is_mt_df$name == right),i] - is_mt_df[which(is_mt_df$name == left),i])
+    summary_vec[m] <- "mi"
+    
+  }
+}
+
+# Store results in one data frame
+
+colnames(mi_df)[2:ncol(mi_df)] <- c(1:num_of_injections)
+
+mi_df <- cbind(name = mass_df$name,
+               left_is = is_left_vec,
+               right_is = is_right_vec,
+               description = summary_vec,
+               mi_df[2:ncol(mi_df)])
+
+write.csv(mi_df, "csv Outputs/Migration Index Summary.csv", row.names = FALSE)
+
+# Clean Environment
+
+rm(list = c("summary_vec", "right", "left", "is_temp", "is_left_vec", "is_right_vec", "is_mt_df"))
+
+print("Migration Factor Calculation Complete")
+
 # Initiate progress bar
 
 pb <- winProgressBar(title = "Peak Seeker", 
@@ -75,7 +201,7 @@ for (d in 1:length(data_files)){
   
   print(paste(d, ". ", "Analyzing Data File: ", data_file_names[d], sep = ""))
 
-  # 2. Read Data File ----
+  # 3. Read Data File ----
 
   # Make a copy of the data file as data will be written directly to this file during mass calibration
   
@@ -102,7 +228,7 @@ for (d in 1:length(data_files)){
   
   env_binding_unlock(run_data@assayData)
   
-  # 3. Perform Mass Calibration ----
+  # 4. Perform Mass Calibration ----
   
   print("Performing Mass Calibration")
   
@@ -224,7 +350,7 @@ for (d in 1:length(data_files)){
     
   }
   
-  # 4. Extract Electropherograms ----
+  # 5. Extract Electropherograms ----
   
   print("Extracting Electropherograms")
   
@@ -261,7 +387,7 @@ for (d in 1:length(data_files)){
   
   print("Extraction Complete")
   
-  # 5. Smooth Intensity Vectors ----
+  # 6. Smooth Intensity Vectors ----
   
   print("Smoothing Electropherograms")
   
@@ -283,117 +409,6 @@ for (d in 1:length(data_files)){
               "n", "mass_error_vec", "run_data"))
   
   print("Electropherograms Smoothing Complete")
-  
-  # 6. Migration Factor Calculation ----
-  
-  if(d == 1){
-   
-    # Summarize user supplied migration time data
-    
-    metabolites_mt_df <- data.frame(name = mass_df$name, mass_df[,c((ncol(mass_df) - num_of_injections + 1) : ncol(mass_df))])
-    is_mt_df <- subset(is_df, is_df$class == "Internal Standard")
-    is_mt_df <- data.frame(name = is_mt_df$name, is_mt_df[,c((ncol(is_mt_df) - num_of_injections + 1) : ncol(is_mt_df))])
-    
-    # Determine IS on the left
-    
-    is_left_vec <- c(1:50)
-    
-    for (m in 1:nrow(metabolites_mt_df)){
-      
-      is_temp <- (metabolites_mt_df[m,2] - (is_mt_df[,2]))
-      is_temp <- set_names(is_temp, is_mt_df$name)
-      is_temp <- is_temp[which(sign(is_temp) == 1 | sign(is_temp) == 0)] %>%
-        which.min() %>%
-        names()
-      
-      if(length(is_temp) == 0){
-        is_temp <- "none"
-      }
-      
-      is_left_vec[m] <- is_temp
-    }
-    
-    # Determine IS on the Right
-    
-    is_right_vec <- c(1:50)
-    
-    for (m in 1:nrow(metabolites_mt_df)){
-      
-      is_temp <- (metabolites_mt_df[m,2] - (is_mt_df[,2]))
-      is_temp <- set_names(is_temp, is_mt_df$name)
-      is_temp <- is_temp[which(sign(is_temp) == -1| sign(is_temp) == 0)] %>%
-        which.max() %>%
-        names()
-      
-      if(length(is_temp) == 0){
-        is_temp <- "none"
-      }
-      
-      is_right_vec[m] <- is_temp
-    }
-    
-    # Compute migration factors
-    
-    mf_df <- matrix(NA, ncol = (num_of_injections + 1), nrow = nrow(metabolites_mt_df)) %>%
-      as.data.frame()
-    mf_df[,1] <- metabolites_mt_df$name
-    
-    summary_vec <- c(1:nrow(metabolites_mt_df))
-    
-    for (m in 1:nrow(metabolites_mt_df)){
-      for (i in 2:(num_of_injections + 1)){
-        
-        left <- is_left_vec[m]
-        right <- is_right_vec[m]
-        
-        # If a left or right internal standard does not exist, calculate the relative 
-        # migration time to the nearest internal standard instead
-        
-        if(left == "none"){
-          
-          mf_df[m,i] <- metabolites_mt_df[m,i] / is_mt_df[which(is_mt_df$name == right),i]
-          summary_vec[m] <- right
-          next
-          
-        }
-        
-        if(right == "none"){
-          
-          mf_df[m,i] <- metabolites_mt_df[m,i] / is_mt_df[which(is_mt_df$name == left),i]
-          summary_vec[m] <- left
-          next
-          
-        }
-        
-        # If the metabolite migrates near either neighboring internal standards, 
-        # calculate the relative migration time to the nearest internal standard instead
-        
-        if(metabolites_mt_df[m,2] / is_mt_df[which(is_mt_df$name == left),2] < 1.01){
-          
-          mf_df[m,i] <-metabolites_mt_df[m,i] / is_mt_df[which(is_mt_df$name == left),i]
-          summary_vec[m] <- left
-          next
-          
-        }
-        
-        if(metabolites_mt_df[m,2] / is_mt_df[which(is_mt_df$name == right),2] > 0.99){
-          
-          mf_df[m,i] <- metabolites_mt_df[m,i] / is_mt_df[which(is_mt_df$name == right),i]
-          summary_vec[m] <- right
-          next
-          
-        }
-        
-        # Calculate the retention factor
-        
-        mf_df[m,i] <- (metabolites_mt_df[m,i] - is_mt_df[which(is_mt_df$name == left),i]) / (is_mt_df[which(is_mt_df$name == right),i] - is_mt_df[which(is_mt_df$name == left),i])
-        summary_vec[m] <- "rf"
-        
-      }
-    }
-  }
-  
-  print("Migration Factor Calculation Complete")
   
   # 7. Internal Standard Peak Detection, Integration, and Filtering ----
   
@@ -819,13 +834,13 @@ for (d in 1:length(data_files)){
     # Determine the expected migration times of the metabolites
     
     n <- m - num_of_is
-    left_is <- paste(is_left_vec[n], ".apex.seconds", sep ="")
-    right_is <- paste(is_right_vec[n], ".apex.seconds", sep ="")
-    rmt_is <- paste(summary_vec[n], ".apex.seconds", sep ="")
+    left_is <- paste(mi_df$left_is[n], ".apex.seconds", sep ="")
+    right_is <- paste(mi_df$right_is[n], ".apex.seconds", sep ="")
+    rmt_is <- paste(mi_df$description[n], ".apex.seconds", sep ="")
 
-    if(summary_vec[n] == "rf"){
+    if(mi_df$description[n] == "mi"){
       
-      mf_vec <- mf_df[n,2:ncol(mf_df)] %>%
+      mf_vec <- mi_df[n,5:ncol(mi_df)] %>%
         unlist() %>%
         unname()
 
@@ -833,7 +848,7 @@ for (d in 1:length(data_files)){
       
     }else{
     
-      mf_vec <- mf_df[n,2:ncol(mf_df)] %>%
+      mf_vec <- mi_df[n,5:ncol(mi_df)] %>%
         unlist() %>%
         unname()
       
