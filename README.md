@@ -1,4 +1,4 @@
-# Peak Seeker
+# PeakSeeker
 ## Software for Automating MSI-CE-MS Data Preprocessing
 
 ### Description
