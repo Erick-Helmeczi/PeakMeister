@@ -1,9 +1,9 @@
 # PeakSeeker
-## Software for Automating MSI-CE-MS Data Preprocessing
+## Software for Pre-Processing MSI-CE-MS Datasets
 
 ### Description
 
-The motivation behind this program was to develop software that can reduce the burden, cost, and time required to manually preprocess multisegment injection-capillary electrophoresis-mass spectrometry (MSI-CE-MS) data. While MSI-CE-MS allows for the rapid acquisiton of metabolomic data, we were unable to find data processing software which could be tailored to the unique output of this technique. Thus, the key objective of this software is to take raw (.mzML) data files and user supplied conditons, such as a targeted mass-to-charge list, and output plots and tables of summarized peak areas and migration times. 
+Multisegment injection-capillary electrophoresis-mass spectrometry (MSI-CE-MS) is a robust analytical technique used for the rapid acquisition of metabolomics data (<4min/sample) which also meets stringent quality control criteria. The high-throughput nature of this platform makes it an attractive technique for large scale metabolomic experiments where keeping costs down and meeting project deadlines are of critical importance. However, until now, data collected by MSI-CE-MS had to manually pre-processed by an experienced analyst due to the high migration time variability of CE-MS and the complexity of multiplexed data sets, which reduce the compatibility of this technique with other pre-processing tools. Unfortunately, manually pre-processing data is slow, expensive, and tedious, making the technique less attractive as a whole. Thus, we are introducing PeakSeeker, an open-source software written in the R statistical environment for the automated pre-processing of targeted full-scan MSI-CE-MS data.
 
 ### Current Features
 
