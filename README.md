@@ -7,16 +7,20 @@ Multisegment injection-capillary electrophoresis-mass spectrometry (MSI-CE-MS) i
 
 ### Current Features
 
-1. The software allows users to process their data with minimal R experience as all required parameters can be adjusted within an excel sheet.
-2. Mass calibration to lock masses is performed to minimize mass varibaility which commonly occurs in time-of-flight mass spectrometers, expecially during long studies. 
-3. Extracted ion electropherograms (EIEs) are extracted from the calibrated data files using the user supplied mass-to-charge list and then smoothed.
-4. Peaks are detected and filtered using user defined parameters.
-5. Plots are generated and saved for users to review to ensure correct peak peaking and integration occured. 
-6. Peak area and migration time data is further summarized in csv files.
-7. A windows progress bar and print statements have been implimented so users can have an estimate of completetion.
+The key differentiating feature of PeakSeeker from other currently available software tools for pre-processing metabolomic datasets is its use of migration indexes to predict the elution time of analytes in MSI-CE-MS datasets. Thus, to achieve correspondence between analytical runs, PeakSeeker does not perform migration time alignments or converting the time dimension to electrophoretic mobility. Instead, PeakSeeker computes migration indexes for each analyte and uses the migration time of internal standards, or any reliable signals with sufficient signa-to-noise ratios, to compute the migration times of analytes which can then be used for peak annotation and integration. Additionally, as PeakSeeker was designed for multiplexed datasets, it also uses the spaces between analytical peaks to confirm and adjust peak annotation, as the gaps between peaks is typically consistent in MSI-CE-MS experiments. Results produced by PeakSeeker are saved and include:
+
+1. A table containing the migration indexes or relative migration times used to annotating analytes
+2. A copy of the parameters used to process the data
+3. Plots of each extracted ion electropherogram which can be used to check for proper peak annotation and integration
+4. A table containing the migration times of peaks or expected peak positions
+5. A table containing the peak areas of each peak
 
 ### Usage
 
 PeakSeeker has only two requirements to get you up and running:
   * Convert all your data files to open-source mzML files and save them all in a folder titled "mzML Files"
-  * Provide a targeted mass list and corresponding parameters using the provided "Masss List and Parameters.xlsx" template
+  * Provide a targeted mass list and corresponding parameters using the provided "Mass List and Parameters.xlsx" template
+
+### Copyright
+
+
