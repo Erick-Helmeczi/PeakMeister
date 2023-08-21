@@ -18,7 +18,7 @@ The key differentiating feature of PeakSeeker from other currently available sof
 ### Usage
 
 PeakSeeker has only two requirements to get you up and running:
-  * Convert all your data files to open-source mzML files and save them all in a folder titled "mzML Files"
+  * Convert all your data files to open-source mzML files and save them in a folder titled "mzML Files"
   * Provide a targeted mass list and corresponding parameters using the provided "Mass List and Parameters.xlsx" template
 
 ### Copyright
