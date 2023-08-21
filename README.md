@@ -13,4 +13,10 @@ Multisegment injection-capillary electrophoresis-mass spectrometry (MSI-CE-MS) i
 4. Peaks are detected and filtered using user defined parameters.
 5. Plots are generated and saved for users to review to ensure correct peak peaking and integration occured. 
 6. Peak area and migration time data is further summarized in csv files.
-7. A windows progress bar and print statements have been implimented so users can have an estimate of completetion. 
+7. A windows progress bar and print statements have been implimented so users can have an estimate of completetion.
+
+### Usage
+
+PeakSeeker has only two requirements to get you up and running:
+  * Convert all your data files to open-source mzML files and save them all in a folder titled "mzML Files"
+  * Provide a targeted mass list and corresponding parameters using the provided "Masss List and Parameters.xlsx" template
