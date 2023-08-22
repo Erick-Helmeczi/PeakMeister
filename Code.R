@@ -8,7 +8,7 @@ if (!require("BiocManager", quietly = TRUE)) install.packages("BiocManager")
 pacman::p_load("tidyverse", "stats", "DescTools", "xcms", "rlang",
                install = TRUE)
 
-# 1. Load User Data and Parameters ----
+# 1. Load Data and Parameters ----
 
 # Import the user supplied tables of metabolites, internal standards, and general parameters
 
@@ -21,6 +21,45 @@ is_df <- readxl::read_excel("Mass List and Parameters.xlsx", sheet = 2) %>%
 parameters_df <- readxl::read_excel("Mass List and Parameters.xlsx", sheet = 3) %>%
   as.data.frame()
 
+# Generate a results folder that will not overwrite previous results folders
+
+count <- 1
+
+file_name <- paste("Results ", Sys.Date(), sep = "")
+
+while(dir.exists(file_name)){
+  
+  count <- count + 1
+  
+  file_name <- paste("Results ", Sys.Date(), " ", count, sep = "")
+  
+}
+
+dir.create(path = file_name,
+           showWarnings = FALSE)
+
+# Create a "Plots" folder to store figures
+
+dir.create(path = paste(file_name, "/", "Plots", sep = ""),
+           showWarnings = FALSE)
+
+# Create a copy "Mass List and Parameters" excel document into results folder
+
+file.copy(from = "Mass List and Parameters.xlsx", 
+          to = file_name)
+
+# Generate plot sub-folders for plots of each internal standard and metabolite
+
+name_vec <- c(is_df$name, mass_df$name)
+
+for(n in 1:length(name_vec)){
+  path = paste(file_name, "/", "Plots/",name_vec[n], sep = "")
+  dir.create(path = path,
+             showWarnings = FALSE)
+}
+
+rm(list = c("path", "n", "count"))
+
 # Determine the number of metabolites and internal standards
 
 num_of_metabolites <- nrow(mass_df)
@@ -31,28 +70,6 @@ num_of_is <- nrow(is_df)
 
 num_of_injections <- parameters_df$number.of.injections[1]
 
-# Create an "Outputs" folder to store csv files
-
-dir.create(path = "csv Outputs",
-           showWarnings = FALSE)
-
-# Create a "Plots" folder to store figures
-
-dir.create(path = "Plots",
-           showWarnings = FALSE)
-
-# Generate plot sub-folders for plots of each internal standard and metabolite
-
-name_vec <- c(is_df$name, mass_df$name)
-
-for(n in 1:length(name_vec)){
-  path = paste("Plots/",name_vec[n], sep = "")
-  dir.create(path = path,
-             showWarnings = FALSE)
-}
-
-rm(list = c("path", "n"))
-
 # Create vector of data file directories and names 
 
 data_files <- list.files(path = "mzML Files",
@@ -60,7 +77,7 @@ data_files <- list.files(path = "mzML Files",
 
 data_file_names <- list.files(path = "mzML Files")
 
-# 2. Migration Factor Calculation ----
+# 2. Migration Index Calculation ----
 
 # Summarize user supplied migration time data
 
@@ -178,7 +195,9 @@ mi_df <- cbind(name = mass_df$name,
                description = summary_vec,
                mi_df[2:ncol(mi_df)])
 
-write.csv(mi_df, "csv Outputs/Migration Index Summary.csv", row.names = FALSE)
+write.csv(mi_df, 
+          paste(file_name, "/", "Migration Index Summary.csv", sep = ""), 
+          row.names = FALSE)
 
 # Clean Environment
 
@@ -195,24 +214,24 @@ pb <- winProgressBar(title = "Peak Seeker",
                      initial = 0,  
                      width = 300L) 
 
-## Initiate data file for loop ----
+# 3. Read Data File ----
 
 for (d in 1:length(data_files)){
   
   print(paste(d, ". ", "Analyzing Data File: ", data_file_names[d], sep = ""))
 
-  # 3. Read Data File ----
-
   # Make a copy of the data file as data will be written directly to this file during mass calibration
   
-  file.copy(data_files[d], to = paste(data_files[d], "temp", sep = "_"))
+  file <- gsub(".mzML", "", data_files[d])
+  
+  file.copy(data_files[d], to = paste(file, "temp.mzML", sep = "_"))
   
   # Read copied data file
   
   print("Reading Data File")
 
   run_data <- readMSData(
-    file = paste(data_files[d], "temp", sep = "_"),
+    file = paste(file, "temp.mzML", sep = "_"),
     pdata = NULL,
     msLevel = 1,
     verbose = isMSnbaseVerbose(),
@@ -858,13 +877,13 @@ for (d in 1:length(data_files)){
     
     # Filter peak_df for peaks within rmt tolerance
     
-    rmt_tolerance <- mass_df$rmt.tolerance.percent[m - num_of_is] / 100
+    migration_window <- mass_df$migration.window.seconds[m - num_of_is]
     
     for (i in 1:num_of_injections){
       
       peaks <- peak_df %>%
-        filter(., peak_df[,2] <= (1 + rmt_tolerance) * expected_mt[i] & 
-                 peak_df[,2] >= (1 - rmt_tolerance) * expected_mt[i])
+        filter(., peak_df[,2] <= expected_mt[i] + migration_window & 
+                 peak_df[,2] >= expected_mt[i] - migration_window)
       
       # If more than one peak is found choose the nearest one
       
@@ -937,7 +956,7 @@ for (d in 1:length(data_files)){
     
     while (any(duplicated(filtered_peaks_df[,2])) & count < 100){
       
-      strict_rmt_tolerance <- rmt_tolerance/count
+      strict_migration_window <- migration_window/count
       
       # find rows with duplicated values 
       
@@ -952,8 +971,8 @@ for (d in 1:length(data_files)){
       for (r in duplicate_rows){
         
         peaks <- peak_df %>%
-          filter(., peak_df[,2] <= (1 + strict_rmt_tolerance) * expected_mt[r] & 
-                   peak_df[,2] >= (1 - strict_rmt_tolerance) * expected_mt[r])
+          filter(., peak_df[,2] <= expected_mt[r] + strict_migration_window & 
+                   peak_df[,2] >= expected_mt[r] - strict_migration_window)
         
         # If more than one peak is found choose the nearest one
         
@@ -1368,7 +1387,7 @@ for (d in 1:length(data_files)){
            width = 16,
            height = 9,
            plot = last_plot(),
-           path = paste("Plots/", name_vec[n], sep = ""))
+           path = paste(file_name, "/Plots/", name_vec[n], sep = ""))
     
   }
   
@@ -1417,7 +1436,7 @@ for (d in 1:length(data_files)){
   
   # Delete temporary mzml file
   
-  file.remove(paste(data_files[d], "temp", sep = "_"))
+  file.remove(paste(file, "temp.mzml", sep = "_"))
   
   print(paste("Completed Analysis of Data File: ", data_file_names[d], sep = ""))
   print("")
@@ -1425,11 +1444,11 @@ for (d in 1:length(data_files)){
   ## Export data ----
   
   write.csv(peak_area_report,
-            file = "csv Outputs/Metabolite Peak Areas.csv",
+            file = paste(file_name, "/", "Metabolite Peak Areas.csv", sep = ""),
             row.names = FALSE)
   
   write.csv(peak_mt_report,
-            file = "csv Outputs/Metabolite Migration Times.csv",
+            file = paste(file_name, "/", "Metabolite Migration Times.csv", sep = ""),
             row.names = FALSE)
   
 }
