@@ -21,6 +21,8 @@ PeakSeeker has only two requirements to get you up and running:
   * Convert all your data files to open-source mzML files and save them in a folder titled "mzML Files"
   * Provide a targeted mass list and corresponding parameters using the provided "Mass List and Parameters.xlsx" template
 
+### Vignettes
+
 ### Copyright
 
 PeakSeeker is licensed under the [MIT](https://choosealicense.com/licenses/mit/) license
