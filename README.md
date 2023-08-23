@@ -37,8 +37,8 @@ Sheet 1: Analyte Mass List
 6. minimum.peak.width.seconds - This parameter is used to kilter out noise during peak detection. Only peaks with a width equal to or greater than this value will be considered during annotation.
 7. migration.window.seconds - After migration time prediction, PeakSeeker will look for analyte peaks at the expected migration time +/- the time set for this parameter.
 8. snr.threshold - After identifiying which signals correspond to the analyte peaks, PeakSeeker will compute their S/N to determine if they should be recorded as "<LOD".
-9. smoothing.kernal - Smoothing is performed using the "ksmooth" function from the (stats)[https://stat.ethz.ch/R-manual/R-devel/library/stats/html/ksmooth.html] package. This parameter sets the kernal to be used.
-10. smoothing.strength - Smoothing is performed using the "ksmooth" function from the (stats)[https://stat.ethz.ch/R-manual/R-devel/library/stats/html/ksmooth.html] package. This parameter sets the bandwidth to be used.
+9. smoothing.kernal - Smoothing is performed using the "ksmooth" function from the [stats](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/ksmooth.html) package. This parameter sets the kernal to be used.
+10. smoothing.strength - Smoothing is performed using the "ksmooth" function from the [stats](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/ksmooth.html) package. This parameter sets the bandwidth to be used.
 11. The last columns of of this sheet are where reference peak migration times for each analyte are to be set. All of these values need to be taken from the same reference run, including those that will be set for the internal standards in the next sheet.
 
 ### Copyright
