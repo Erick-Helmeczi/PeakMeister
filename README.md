@@ -15,15 +15,31 @@ The key differentiating feature of PeakSeeker from other currently available sof
 4. A table containing the migration times of peaks or expected peak positions
 5. A table containing the peak areas of each peak
 
-### Usage
+### Quick Start
 
-PeakSeeker has only two requirements to get you up and running:
-  * Convert all your data files to open-source mzML files and save them in a folder titled "mzML Files"
+PeakSeeker has only two requirements to get you up and running and all required template files and folders are included in the latest releases:
+  * Convert all your data files to open-source mzML files and save them in the folder titled "mzML Files"
   * Provide a targeted mass list and corresponding parameters using the provided "Mass List and Parameters.xlsx" template
 
-### Vignettes
+Using the project file to open the R script titled "code" and execute the script to begin pre-processing your data
 
-(Getting started with PeakSeeker)[Vignette/Getting Started.Rmd]
+### Detailed Usage
+
+Although PeakSeeker is a script based software tool, users will typically require little to no knowledge of coding to pre-process their data as an excel sheet containing all processing pre-parameters is provided. In this detailed usage overview, I hope to clearly explain the purpose of each of these parameters and how they can be manipulated to accurately annotate MSI-CE-MS data.
+
+Sheet 1: Analyte Mass List
+
+1. name - Provide a name for each analyte in your study. All names must be unique, so if you have multiple unknown compounds, use names such as Unknown-1, Unknown-2, Unknown-3, etc.
+2. mz - Provide the mass-to-charge to be extracted for each analyte in your study.
+3. extraction.window.ppm - This is the extraction window used to extract each mz value provided with units of ppm. We found that a minimum mass window of ~30-35 ppm is required depending on the mass of the analyte, however this will likely be dependent on the mass spectrometer used duing data acquisition.
+4. interference - Here you can designate analyte interferences. Write the name of the analyte or internal standard that is a significant interference to have PeakSeeker annotate instances of peak overlap.
+5. interference.comigration.threshold - This parameter oly needs to be set when an interference is also provided. This is the window used to determine if two peaks are overlapping enough to be considered an interference. The widths of your analyte peaks will determine how high this value needs to be set.
+6. minimum.peak.width.seconds - This parameter is used to kilter out noise during peak detection. Only peaks with a width equal to or greater than this value will be considered during annotation.
+7. migration.window.seconds - After migration time prediction, PeakSeeker will look for analyte peaks at the expected migration time +/- the time set for this parameter.
+8. snr.threshold - After identifiying which signals correspond to the analyte peaks, PeakSeeker will compute their S/N to determine if they should be recorded as "<LOD".
+9. smoothing.kernal - Smoothing is performed using the "ksmooth" function from the (stats)[https://stat.ethz.ch/R-manual/R-devel/library/stats/html/ksmooth.html] package. This parameter sets the kernal to be used.
+10. smoothing.strength - Smoothing is performed using the "ksmooth" function from the (stats)[https://stat.ethz.ch/R-manual/R-devel/library/stats/html/ksmooth.html] package. This parameter sets the bandwidth to be used.
+11. The last columns of of this sheet are where reference peak migration times for each analyte are to be set. All of these values need to be taken from the same reference run, including those that will be set for the internal standards in the next sheet.
 
 ### Copyright
 
