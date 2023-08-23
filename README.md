@@ -36,18 +36,29 @@ Sheet 1: Analyte Mass List
 5. interference.comigration.threshold - This parameter oly needs to be set when an interference is also provided. This is the window used to determine if two peaks are overlapping enough to be considered an interference. The widths of your analyte peaks will determine how high this value needs to be set.
 6. minimum.peak.width.seconds - This parameter is used to kilter out noise during peak detection. Only peaks with a width equal to or greater than this value will be considered during annotation.
 7. migration.window.seconds - After migration time prediction, PeakSeeker will look for analyte peaks at the expected migration time +/- the time set for this parameter.
-8. snr.threshold - After identifiying which signals correspond to the analyte peaks, PeakSeeker will compute their S/N to determine if they should be recorded as "<LOD".
-9. smoothing.kernal - Smoothing is performed using the "ksmooth" function from the [stats](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/ksmooth.html) package. This parameter sets the kernal to be used.
-10. smoothing.strength - Smoothing is performed using the "ksmooth" function from the [stats](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/ksmooth.html) package. This parameter sets the bandwidth to be used.
-11. The last columns of of this sheet are where reference peak migration times for each analyte are to be set. All of these values need to be taken from the same reference run, including those that will be set for the internal standards in the next sheet.
+8. peak.space.tolerance.percent - Peaks are expected to be spaced approximaely equally apart. This parameter designates how differently they can deviate from the median spacing before being subject to reanalysis by PeakSeeker. 
+9. snr.threshold - After identifiying which signals correspond to the analyte peaks, PeakSeeker will compute their S/N to determine if they should be recorded as "<LOD".
+10. smoothing.kernal - Smoothing is performed using the "ksmooth" function from the [stats](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/ksmooth.html) package. This parameter sets the kernal to be used.
+11. smoothing.strength - Smoothing is performed using the "ksmooth" function from the [stats](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/ksmooth.html) package. This parameter sets the bandwidth to be used.
+12. The last columns of of this sheet are where reference peak migration times for each analyte are to be set. All of these values need to be taken from the same reference run, including those that will be set for the internal standards in the next sheet.
 
 Sheet 2: Internal Standard Mass List
 
 For this sheet, I will focus on the sections not discussed above. Features used in this section can be used as landmark peaks that can help predict the migration times of analytes in the previous sheet. These landmark peeks use a separte algorithm for annotation which requires their peak areas to be reliable and alwyas the most intense within the EIE. Thus, internal standards are typically used for here however analytes that are are very concentrated in your sample matrix may also be used. 
 
 1. class - use "Internal Standard" for any compound you want to be used to compound migration indexes for analytes on the previous sheet. Typically this should be every compound listed here however, the option is availble to not use them. Simply type "Analyte" instead if this is the case.
-2. min.mt.min -
-3. max-mt-min - 
+2. min.mt.min - Minimum migration time cutoff. Peaks that elute before this threshold will not be considered as possible internal standard peaks
+3. max.mt.min - Maximum migration time cutoff. Peaks that elute after this threshold will not be considered as possible internal standard peaks
+
+Sheet 3: Parameters
+
+1. number.of.injections - Number of injections used during data acquisition
+2. ref.mass.one
+3. ref.mass.two
+4. ref.mass.window.ppm
+5. ref.mass.counts
+6. apply.mass.correction
+7. 
 
 ### Copyright
 
