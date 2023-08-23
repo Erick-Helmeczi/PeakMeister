@@ -25,7 +25,7 @@ Using the project file to open the R script titled "code" and execute the script
 
 ### Detailed Usage
 
-Although PeakSeeker is a script based software tool, users will typically require little to no knowledge of coding to pre-process their data as an excel sheet containing all processing pre-parameters is provided. In this detailed usage overview, I hope to clearly explain the purpose of each of these parameters and how they can be manipulated to accurately annotate MSI-CE-MS data.
+Although PeakSeeker is a script based software tool, users will typically require little to no knowledge of coding to pre-process their data as an excel sheet containing all pre-processing parameters is provided. In this detailed usage overview, the purpose of each parameters and how they can be manipulated to accurately annotate MSI-CE-MS data will be explained.
 
 Sheet 1: Analyte Mass List
 
@@ -40,6 +40,14 @@ Sheet 1: Analyte Mass List
 9. smoothing.kernal - Smoothing is performed using the "ksmooth" function from the [stats](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/ksmooth.html) package. This parameter sets the kernal to be used.
 10. smoothing.strength - Smoothing is performed using the "ksmooth" function from the [stats](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/ksmooth.html) package. This parameter sets the bandwidth to be used.
 11. The last columns of of this sheet are where reference peak migration times for each analyte are to be set. All of these values need to be taken from the same reference run, including those that will be set for the internal standards in the next sheet.
+
+Sheet 2: Internal Standard Mass List
+
+For this sheet, I will focus on the sections not discussed above. Features used in this section can be used as landmark peaks that can help predict the migration times of analytes in the previous sheet. These landmark peeks use a separte algorithm for annotation which requires their peak areas to be reliable and alwyas the most intense within the EIE. Thus, internal standards are typically used for here however analytes that are are very concentrated in your sample matrix may also be used. 
+
+1. class - use "Internal Standard" for any compound you want to be used to compound migration indexes for analytes on the previous sheet. Typically this should be every compound listed here however, the option is availble to not use them. Simply type "Analyte" instead if this is the case.
+2. min.mt.min -
+3. max-mt-min - 
 
 ### Copyright
 
