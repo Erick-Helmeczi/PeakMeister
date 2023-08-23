@@ -23,7 +23,7 @@ PeakSeeker has only two requirements to get you up and running:
 
 ### Vignettes
 
-(Getting started with PeakSeeker)["Vignette/Getting Started.RMD"]
+(Getting started with PeakSeeker)[Vignette/Getting Started.Rmd]
 
 ### Copyright
 
