@@ -53,13 +53,12 @@ For this sheet, I will focus on the sections not discussed above. Features used 
 Sheet 3: Parameters
 
 1. number.of.injections - Number of injections used during data acquisition
-2. ref.mass.one
-3. ref.mass.two
-4. ref.mass.window.ppm
-5. ref.mass.counts
-6. apply.mass.correction
-7. 
-
+2. ref.mass.one - Lower lock-mass used for accurate mass correction
+3. ref.mass.two - Upper lock-mass used for accurate mass correction
+4. ref.mass.window.ppm - mass window to search for lock-mass peak in
+5. ref.mass.counts - Minimum peak hight requirement of the lock-mass for correction to be applied
+6. apply.mass.correction - Should the lock mass correction be applied. Correction will only be applied is "Yes" is set for this parameter
+   
 ### Copyright
 
 PeakSeeker is licensed under the [MIT](https://choosealicense.com/licenses/mit/) license
