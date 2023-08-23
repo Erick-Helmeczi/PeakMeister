@@ -23,6 +23,8 @@ PeakSeeker has only two requirements to get you up and running:
 
 ### Vignettes
 
+(Getting started with PeakSeeker)[Vignette/Getting Started.Rmd]
+
 ### Copyright
 
 PeakSeeker is licensed under the [MIT](https://choosealicense.com/licenses/mit/) license
