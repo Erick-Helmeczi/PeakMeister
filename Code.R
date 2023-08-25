@@ -479,7 +479,7 @@ for (d in 1:length(data_files)){
     
     # Filter peaks that are outside migration time limits
     
-    peak_df <- subset(peak_df, peak_df$start >= is_df$min.rt.min[s] * 60 & peak_df$end <= is_df$max.rt.min[s] * 60)
+    peak_df <- subset(peak_df, peak_df$start >= is_df$min.mt.min[s] * 60 & peak_df$end <= is_df$max.mt.min[s] * 60)
     
     ## Integrate peaks ----
     
