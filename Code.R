@@ -425,7 +425,8 @@ for (d in 1:length(data_files)){
   # Clean-up global environment
   
   rm(list = c("electropherograms", "mzr", "Smooth", "temp_df", "max", "min", 
-              "n", "mass_error_vec", "run_data"))
+              "n", "mass_error_vec", "run_data", "smoothing_strength_vec",
+              "smoothing_kernel_vec"))
   
   print("Electropherograms Smoothing Complete")
   
@@ -435,7 +436,7 @@ for (d in 1:length(data_files)){
   
   ## Peak detection ---- 
   
-  n <- parameters_df$required.points.for.peak.picking[1]
+  n <- 1
   
   for (s in 1:num_of_is){
     
@@ -504,15 +505,13 @@ for (d in 1:length(data_files)){
     
     # rename peak_df columns
     
-    colnames.vector = c(paste(name_vec[s], "start.seconds", sep = "."),
-                        paste(name_vec[s], "apex.seconds", sep = "."),
-                        paste(name_vec[s], "end.seconds", sep = "."),
-                        paste(name_vec[s], "start_intensity", sep = "."),
-                        paste(name_vec[s], "apex_intensity", sep = "."),
-                        paste(name_vec[s], "end_intensity", sep = "."),
-                        paste(name_vec[s], "peak.area", sep = "."))
-    
-    colnames(peak_df) <- colnames.vector
+    colnames(peak_df) <- c(paste(name_vec[s], "start.seconds", sep = "."),
+                           paste(name_vec[s], "apex.seconds", sep = "."),
+                           paste(name_vec[s], "end.seconds", sep = "."),
+                           paste(name_vec[s], "start_intensity", sep = "."),
+                           paste(name_vec[s], "apex_intensity", sep = "."),
+                           paste(name_vec[s], "end_intensity", sep = "."),
+                           paste(name_vec[s], "peak.area", sep = "."))
     
     # Retain peak_df for future filtering steps
     
@@ -729,6 +728,17 @@ for (d in 1:length(data_files)){
                                to = ncol(is_peaks_df),
                                by = 7)]
   
+  # Clean local environment
+  
+  rm(list = c("df_temp", "start_intensity", "start", "s", "run_lengths", 
+              "peaks_to_check", "peak_space_tol_check", "peak_area_vector", 
+              "peak", "num_bad_space", "median_space_upper_lim", "median_space_tol", 
+              "median_space_lower_lim", "median_space", "intensity_fwhm", 
+              "fwhm_mt_right", "gap", "fwhm_vec", "fwhm_mt_left", "false_peak_diff", 
+              "expected_peak_apex", "end_intensity", "end", "cut_off", "consecutive_runs", 
+              "bad_space", "apex_intensity", "apex", "single_eie", "single_eie_temp", "rle_output",
+              "fwhm_cutoff"))
+  
   print("Peak Picking and Filtering for Internal Standards Complete")
   
   # 8. Metabolite  Peak Detection, Integration, and Filtering ----
@@ -744,7 +754,7 @@ for (d in 1:length(data_files)){
     # Determine the start, apex, and end of peaks. Use the user defined value "n" to detect peaks.
     # If n results in fewer peaks then injection, decrease n by 1 and repeat
     
-    n <- parameters_df$required.points.for.peak.picking[1]
+    n <- 1
     
     while (nrow(peak_df) < num_of_injections & n >= 0){
       
@@ -829,15 +839,13 @@ for (d in 1:length(data_files)){
     
     # rename peak_df columns
     
-    colnames.vector = c(paste(name_vec[m], "start.seconds", sep = "."),
-                        paste(name_vec[m], "apex.seconds", sep = "."),
-                        paste(name_vec[m], "end.seconds", sep = "."),
-                        paste(name_vec[m], "start_intensity", sep = "."),
-                        paste(name_vec[m], "apex_intensity", sep = "."),
-                        paste(name_vec[m], "end_intensity", sep = "."),
-                        paste(name_vec[m], "peak.area", sep = "."))
-    
-    colnames(peak_df) <- colnames.vector
+    colnames(peak_df) <- c(paste(name_vec[m], "start.seconds", sep = "."),
+                           paste(name_vec[m], "apex.seconds", sep = "."),
+                           paste(name_vec[m], "end.seconds", sep = "."),
+                           paste(name_vec[m], "start_intensity", sep = "."),
+                           paste(name_vec[m], "apex_intensity", sep = "."),
+                           paste(name_vec[m], "end_intensity", sep = "."),
+                           paste(name_vec[m], "peak.area", sep = "."))
     
     ## Filter peaks ----
     
@@ -1269,6 +1277,20 @@ for (d in 1:length(data_files)){
   colnames(is_comment_df) <- is_df$name
   
   comment_df <- cbind(is_comment_df, comment_df)
+  
+  # Clean local environment
+  
+  rm(list = c("total_run_time", "temp_noise", "start_intensity", "start", "space_vec",
+              "space_upper_lim", "space_tol", "space_lower_lim", "run_lengths", "rmt_is", 
+              "right_is", "region_start", "region_end", "r", "peak_tolerance",
+              "peak_space_tol_check", "peak_area_vector", "noise_vec", "noise",
+              "nearest_mt", "nearest_good_peak", "mt", "min_width_cut_off", "migration_window",
+              "mf_vec", "left_is", "late_peaks", "interferences", "interference", 
+              "good_peaks", "expected_mt", "end_intensity", "end", "duplicate_location",
+              "diff_temp", "count_limit", "count", "consecutive_runs", "bad_space", 
+              "bad_peaks", "apex_intensity", "apex", "rle_output", "peaks", "p", 
+              "n", "m", "k", "j", "i", "b", "peak_df_trim", "peak_df_fill", "peak_df",
+              "interference_df"))
   
   print("Peak Picking and Filtering for Analytes Complete")
   
