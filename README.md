@@ -27,7 +27,7 @@ Using the project file to open the R script titled "code" and execute the script
 
 Although PeakSeeker is a script based software tool, users will typically require little to no knowledge of coding to pre-process their data as an excel sheet containing all pre-processing parameters is provided. In this detailed usage overview, the purpose of each parameters and how they can be manipulated to accurately annotate MSI-CE-MS data will be explained.
 
-#### Sheet 1: Analyte Mass List
+##### Sheet 1: Analyte Mass List
 
 1. name - Provide a name for each analyte in your study. All names must be unique, so if you have multiple unknown compounds, use names such as Unknown-1, Unknown-2, Unknown-3, etc.
 2. mz - Provide the mass-to-charge to be extracted for each analyte in your study.
@@ -42,7 +42,7 @@ Although PeakSeeker is a script based software tool, users will typically requir
 11. smoothing.strength - Smoothing is performed using the "ksmooth" function from the [stats](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/ksmooth.html) package. This parameter sets the bandwidth to be used.
 12. The last columns of of this sheet are where reference peak migration times for each analyte are to be set. All of these values need to be taken from the same reference run, including those that will be set for the internal standards in the next sheet.
 
-Sheet 2: Internal Standard Mass List
+##### Sheet 2: Internal Standard Mass List
 
 For this sheet, I will focus on the sections not discussed above. Features used in this section can be used as landmark peaks that can help predict the migration times of analytes in the previous sheet. These landmark peeks use a separte algorithm for annotation which requires their peak areas to be reliable and alwyas the most intense within the EIE. Thus, internal standards are typically used for here however analytes that are are very concentrated in your sample matrix may also be used. 
 
@@ -50,7 +50,7 @@ For this sheet, I will focus on the sections not discussed above. Features used 
 2. min.mt.min - Minimum migration time cutoff. Peaks that elute before this threshold will not be considered as possible internal standard peaks
 3. max.mt.min - Maximum migration time cutoff. Peaks that elute after this threshold will not be considered as possible internal standard peaks
 
-Sheet 3: Parameters
+##### Sheet 3: Parameters
 
 1. number.of.injections - Number of injections used during data acquisition
 2. ref.mass.one - Lower lock-mass used for accurate mass correction
