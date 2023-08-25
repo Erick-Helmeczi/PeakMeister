@@ -27,7 +27,7 @@ Using the project file to open the R script titled "code" and execute the script
 
 Although PeakSeeker is a script based software tool, users will typically require little to no knowledge of coding to pre-process their data as an excel sheet containing all pre-processing parameters is provided. In this detailed usage overview, the purpose of each parameters and how they can be manipulated to accurately annotate MSI-CE-MS data will be explained.
 
-Sheet 1: Analyte Mass List
+#### Sheet 1: Analyte Mass List
 
 1. name - Provide a name for each analyte in your study. All names must be unique, so if you have multiple unknown compounds, use names such as Unknown-1, Unknown-2, Unknown-3, etc.
 2. mz - Provide the mass-to-charge to be extracted for each analyte in your study.
