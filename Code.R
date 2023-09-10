@@ -436,329 +436,13 @@ for (d in 1:length(data_files)){
   
   ## Peak detection ---- 
   
-  n <- 1
-  
-  for (s in 1:num_of_is){
-    
-    rle_output <- eie_df[,s+1] %>%
-      diff() %>%
-      sign() %>%
-      rle()
-    
-    consecutive_runs <- which(rle_output$lengths > n & rle_output$values == 1)
-    consecutive_runs <- subset(consecutive_runs, (consecutive_runs + 1) %in% (which(rle_output$lengths > n)) == TRUE)
-    
-    run_lengths <- cumsum(rle_output$lengths) + 1
-    
-    start <- eie_df$mt.seconds[run_lengths[consecutive_runs - 1]]
-    apex <- eie_df$mt.seconds[run_lengths[consecutive_runs]]
-    end <- eie_df$mt.seconds[run_lengths[consecutive_runs + 1]]
-    
-    # For FWHM calculations I will also add intensity values here as well
-    
-    start_intensity <- eie_df[run_lengths[consecutive_runs - 1], (s+1)]
-    apex_intensity <- eie_df[run_lengths[consecutive_runs], (s+1)]
-    end_intensity <- eie_df[run_lengths[consecutive_runs + 1], (s+1)]
-    
-    # Account for peaks that start immediately during the analysis
-    
-    if(length(start) != length(apex)){
-      start <- append(start, 0, 0)
-      start_intensity <- append(start_intensity, 0, 0)
-    }
-    
-    # Create a data frame containing the start, apex, and end migration times of each peak
-    
-    peak_df <- data.frame(start,
-                          apex,
-                          end,
-                          start_intensity,
-                          apex_intensity,
-                          end_intensity)
-    
-    ## Migration time filtering ----
-    
-    # Filter peaks that are outside migration time limits
-    
-    peak_df <- subset(peak_df, peak_df$start >= is_df$min.mt.min[s] * 60 & peak_df$end <= is_df$max.mt.min[s] * 60)
-    
-    ## Integrate peaks ----
-    
-    peak_area_vector = c(1:nrow(peak_df))
-    
-    for (p in 1:nrow(peak_df)){
-      
-      peak_area_vector[p] <- AUC(eie_df$mt.seconds,
-                                 eie_df[,s+1],
-                                 method = "trapezoid",
-                                 from = peak_df[p,1],
-                                 to = peak_df[p,3],
-                                 absolutearea = FALSE,
-                                 na.rm = FALSE)
-      
-      # Perform baseline correction
-      
-      peak_area_vector[p] <- peak_area_vector[p] - (peak_df[p,3] - peak_df[p,1]) * min(peak_df[p,4], peak_df[p,6])
-    }
-    
-    peak_df <- cbind(peak_df, peak_area_vector)
-    
-    # rename peak_df columns
-    
-    colnames(peak_df) <- c(paste(name_vec[s], "start.seconds", sep = "."),
-                           paste(name_vec[s], "apex.seconds", sep = "."),
-                           paste(name_vec[s], "end.seconds", sep = "."),
-                           paste(name_vec[s], "start_intensity", sep = "."),
-                           paste(name_vec[s], "apex_intensity", sep = "."),
-                           paste(name_vec[s], "end_intensity", sep = "."),
-                           paste(name_vec[s], "peak.area", sep = "."))
-    
-    # Retain peak_df for future filtering steps
-    
-    peak_df_fill <- peak_df
-    
-    ## FWHM filtering ----
-    
-    # Find the peak intensity at half the peak height
-    
-    intensity_fwhm <- peak_df[,4] + (peak_df[,5] - peak_df[,4])/2 
-    
-    # Find the migration times closest to these intensities within each peak
-    
-    fwhm_vec <- vector()
-    single_eie <- eie_df[,c(1,s+1)]
-    
-    for(p in 1:nrow(peak_df)){
-      
-      single_eie_temp <- subset(single_eie, single_eie$mt.seconds >= peak_df[p,1] & single_eie$mt.seconds <= peak_df[p,2])
-      fwhm_mt_left <- single_eie_temp$mt.seconds[which.min(abs(single_eie_temp[,2] - intensity_fwhm[p]))]
-      
-      single_eie_temp <- subset(single_eie, single_eie$mt.seconds <= peak_df[p,3] & single_eie$mt.seconds >= peak_df[p,2])
-      fwhm_mt_right <- single_eie_temp$mt.seconds[which.min(abs(single_eie_temp[,2] - intensity_fwhm[p]))]
-      
-      fwhm_vec <- append(fwhm_vec, fwhm_mt_right - fwhm_mt_left)
-      
-    }
-    
-    peak_df$fwhm <- fwhm_vec
-    
-    # Determine the fwhm of the peaks (n = num_of_injections) with the greatest area
-    
-    df_temp <- peak_df[order(-peak_df[,8]),]
-    df_temp <- df_temp[1:num_of_injections,]
-    
-    fwhm_cutoff <- median(df_temp$fwhm)
-    
-    peak_df <- subset(peak_df, peak_df$fwhm <= (fwhm_cutoff * is_df$peak.fwhm.tolerance.multiplier[s]))
-    peak_df <- peak_df[,c(1:7)]
-    
-    # subset peak_df so that only the peaks (n = number.of.injections) with the greatest area are kept
-    
-    cut_off <- sort(peak_df[,7], decreasing = TRUE)[num_of_injections]
-    
-    peak_df <- subset(peak_df, peak_df[,7] >= cut_off)
-    
-    ## Peak space filtering ----
-    
-    # Determine the upper and lower migration time limits for space between peaks
-    
-    median_space <- peak_df[,2] %>%
-      diff() %>%
-      median()
-    
-    median_space_tol <- is_df$peak.space.tolerance.percent[s] / 100
-    
-    median_space_lower_lim <- median_space - median_space * median_space_tol
-    median_space_upper_lim <- median_space + median_space * median_space_tol
-    
-    # Check if peaks migrate within the tolerance limits
-    
-    peak_space_tol_check <- between(diff(peak_df[,2]), median_space_lower_lim, median_space_upper_lim)
-    
-    if(all(peak_space_tol_check) != TRUE){
-      bad_space <- which(peak_space_tol_check == FALSE)
-    }else{
-      bad_space <- NA
-    }
-    
-    ## Scenario 1 ----
-    # Only one bad space is detected
-    
-    if(length(bad_space) == 1 & is.na(bad_space[1]) == FALSE){
-      
-      false_peak_diff <- peak_df[num_of_injections, 2] - peak_df[(num_of_injections - 1), 2]
-      
-      # This algorithm always assumes the final peak is false - likely due to carryover
-      # It is possible the first peak is false but this seems less likely
-      # Final peak only removed if case 1 does not produce a duplicate
-      
-      # Case 1- An interior peak is missing (usually a blank)
-      
-      if(bad_space != (num_of_injections - 1)){
-        
-        # Since the we know the bad space is not at the end, use the space after the bad space to find the expected apex
-        
-        expected_peak_apex <- peak_df[bad_space[1],2] + peak_df[(bad_space[1] + 2),2] - peak_df[(bad_space[1] + 1),2]
-        
-      }
-      
-      # Case 2 -  Final space is false and less than median - suspect that true final peak was missed
-      
-      if(bad_space == (num_of_injections - 1) & false_peak_diff < median_space_upper_lim){
-        expected_peak_apex <- peak_df[(num_of_injections - 1 ),2] + median_space
-      }
-      
-      # Case 3 - Final space is false and greater than median - suspect that peak 1 was missed
-      
-      if(bad_space == (num_of_injections - 1) & false_peak_diff > median_space_lower_lim){
-        expected_peak_apex <- peak_df[1,2] - median_space
-      }
-      
-      peak <- which.min(abs(peak_df_fill[,2] - expected_peak_apex))
-      
-      # If the nearest peak is too far from the expected migration time use a place holder
-      
-      if (abs(peak_df_fill[peak,2] - expected_peak_apex) > (median_space / 2)){
-        
-        nearest_mt <- (eie_df$mt.seconds - expected_peak_apex) %>%
-          abs() %>%
-          which.min(.)
-        
-        peaks <- data.frame(eie_df[nearest_mt,1],
-                            eie_df[nearest_mt,1],
-                            eie_df[nearest_mt,1],
-                            eie_df[nearest_mt,s + 1],
-                            eie_df[nearest_mt,s + 1],
-                            eie_df[nearest_mt,s + 1],
-                            0)
-        
-        colnames(peaks) <- colnames(peak_df)
-        
-        peak_df <- rbind(peak_df, peaks)
-        
-        peak_df <- peak_df[order(peak_df[,2]),]
-        
-      }else{
-        
-        peak_df <- rbind(peak_df, peak_df_fill[peak,])
-        
-        peak_df <- peak_df[order(peak_df[,2]),]
-        
-      }
-      
-      # Remove bad peak
-      
-      if (any(duplicated(peak_df[,2]))){
-        
-        peak_df <- peak_df[-c(which(duplicated(peak_df[,2]))),]
-        
-      }else{
-        
-        peak_df <- peak_df[1:(num_of_injections),]
-        
-      }
-    }
-    
-    ## Scenario 2 ---- 
-    #Two or three bad spaces are detected 
-    
-    if(length(bad_space) == 2 | length(bad_space) == 3){
-      
-      peaks_to_check <- c(bad_space, (bad_space + 1)) %>%
-        unique() %>%
-        sort()
-      
-      # Outside peaks must be checked last
-      
-      peaks_to_check <- c(peaks_to_check[-1], peaks_to_check[1])
-      
-      # Loop through each suspect bad peak and remove them iteratively until the number of bad spaces reaches 1
-      
-      for (p in 1:length(peaks_to_check)){
-        
-        num_bad_space <- peak_df[,2] %>%
-          .[-c(peaks_to_check[p])] %>%
-          diff(.) %>%
-          between (median_space_lower_lim, median_space_upper_lim) 
-        num_bad_space <- length(which(num_bad_space == FALSE))
-        
-        if (num_bad_space == 1){
-          peak_df <- peak_df[-c(peaks_to_check[p]),]
-          break
-        }
-      }
-      
-      # To avoid errors where removing a peak results in 0 bad spaces only fill
-      # in gap if nrow(peak_df) == number of injections - 1
-      
-      if(nrow(peak_df) == (num_of_injections - 1)){
-        
-        # Find the peak gap and calculate the expected migration time for the missing peak
-        
-        gap <- which(between(diff(peak_df[,2]), median_space_lower_lim, median_space_upper_lim) == FALSE)
-        
-        expected_peak_apex <- (peak_df[(gap[1] + 1),2] - peak_df[gap[1],2])/2 + peak_df[gap[1],2]
-        
-        # Find the nearest peak in the peak_df_fill data frame to the expected migration time
-        # Avoid duplicate peaks by not using exisitng peaks in peak_df
-        
-        peak_df_fill <- subset(peak_df_fill, !(peak_df_fill[,2] %in% peak_df[,2]))
-        
-        peak <- which.min(abs(peak_df_fill[,2] - expected_peak_apex))
-        peak_df <- rbind(peak_df, peak_df_fill[peak,])
-        
-        peak_df <- peak_df[order(peak_df[,2]),]
-        
-      }
-    }
-    
-    # Summarize peak_df data in is.peak_df
-    
-    if(s == 1){
-      is_peaks_df = peak_df
-    }else{
-      is_peaks_df = cbind(is_peaks_df, peak_df)  
-    }
-  }
-  
-  # Make a data frame containing the apex migration times of the internal standards
-  # to be used to filter metabolite peaks
-  
-  is_mt_df <- is_peaks_df[,seq(from = 2,
-                               to = ncol(is_peaks_df),
-                               by = 7)]
-  
-  # Clean local environment
-  
-  rm(list = c("df_temp", "start_intensity", "start", "s", "run_lengths", 
-              "peaks_to_check", "peak_space_tol_check", "peak_area_vector", 
-              "peak", "num_bad_space", "median_space_upper_lim", "median_space_tol", 
-              "median_space_lower_lim", "median_space", "intensity_fwhm", 
-              "fwhm_mt_right", "gap", "fwhm_vec", "fwhm_mt_left", "false_peak_diff", 
-              "expected_peak_apex", "end_intensity", "end", "cut_off", "consecutive_runs", 
-              "bad_space", "apex_intensity", "apex", "single_eie", "single_eie_temp", "rle_output",
-              "fwhm_cutoff"))
-  
-  print("Peak Picking and Filtering for Internal Standards Complete")
-  
-  # 8. Metabolite  Peak Detection, Integration, and Filtering ----
-  
-  print("Performing Peak Picking and Filtering for Analytes")
-  
-  ## Peak detection ---- 
-  
-  for (m in (num_of_is + 1):length(name_vec)){
-    
-    peak_df <- data.frame()
-      
-    # Determine the start, apex, and end of peaks. Use the user defined value "n" to detect peaks.
-    # If n results in fewer peaks then injection, decrease n by 1 and repeat
+  is_peaks_df <- local({
     
     n <- 1
     
-    while (nrow(peak_df) < num_of_injections & n >= 0){
+    for (s in 1:num_of_is){
       
-      rle_output <- eie_df[,m + 1] %>%
+      rle_output <- eie_df[,s+1] %>%
         diff() %>%
         sign() %>%
         rle()
@@ -772,11 +456,11 @@ for (d in 1:length(data_files)){
       apex <- eie_df$mt.seconds[run_lengths[consecutive_runs]]
       end <- eie_df$mt.seconds[run_lengths[consecutive_runs + 1]]
       
-      # I will also add intensity values here as well
+      # For FWHM calculations I will also add intensity values here as well
       
-      start_intensity <- eie_df[run_lengths[consecutive_runs - 1], (m+1)]
-      apex_intensity <- eie_df[run_lengths[consecutive_runs], (m+1)]
-      end_intensity <- eie_df[run_lengths[consecutive_runs + 1], (m+1)]
+      start_intensity <- eie_df[run_lengths[consecutive_runs - 1], (s+1)]
+      apex_intensity <- eie_df[run_lengths[consecutive_runs], (s+1)]
+      end_intensity <- eie_df[run_lengths[consecutive_runs + 1], (s+1)]
       
       # Account for peaks that start immediately during the analysis
       
@@ -785,8 +469,7 @@ for (d in 1:length(data_files)){
         start_intensity <- append(start_intensity, 0, 0)
       }
       
-      # Create a data frame containing the start, apex, and end migration times of each 
-      # peak in addition to required intensities for FWHM calculations
+      # Create a data frame containing the start, apex, and end migration times of each peak
       
       peak_df <- data.frame(start,
                             apex,
@@ -795,197 +478,416 @@ for (d in 1:length(data_files)){
                             apex_intensity,
                             end_intensity)
       
-      n <- n - 1
+      ## Migration time filtering ----
       
+      # Filter peaks that are outside migration time limits
+      
+      peak_df <- subset(peak_df, peak_df$start >= is_df$min.mt.min[s] * 60 & peak_df$end <= is_df$max.mt.min[s] * 60)
+      
+      ## Integrate peaks ----
+      
+      peak_area_vector = c(1:nrow(peak_df))
+      
+      for (p in 1:nrow(peak_df)){
+        
+        peak_area_vector[p] <- AUC(eie_df$mt.seconds,
+                                   eie_df[,s+1],
+                                   method = "trapezoid",
+                                   from = peak_df[p,1],
+                                   to = peak_df[p,3],
+                                   absolutearea = FALSE,
+                                   na.rm = FALSE)
+        
+        # Perform baseline correction
+        
+        peak_area_vector[p] <- peak_area_vector[p] - (peak_df[p,3] - peak_df[p,1]) * min(peak_df[p,4], peak_df[p,6])
+      }
+      
+      peak_df <- cbind(peak_df, peak_area_vector)
+      
+      # rename peak_df columns
+      
+      colnames(peak_df) <- c(paste(name_vec[s], "start.seconds", sep = "."),
+                             paste(name_vec[s], "apex.seconds", sep = "."),
+                             paste(name_vec[s], "end.seconds", sep = "."),
+                             paste(name_vec[s], "start_intensity", sep = "."),
+                             paste(name_vec[s], "apex_intensity", sep = "."),
+                             paste(name_vec[s], "end_intensity", sep = "."),
+                             paste(name_vec[s], "peak.area", sep = "."))
+      
+      # Retain peak_df for future filtering steps
+      
+      peak_df_fill <- peak_df
+      
+      ## FWHM filtering ----
+      
+      # Find the peak intensity at half the peak height
+      
+      intensity_fwhm <- peak_df[,4] + (peak_df[,5] - peak_df[,4])/2 
+      
+      # Find the migration times closest to these intensities within each peak
+      
+      fwhm_vec <- vector()
+      single_eie <- eie_df[,c(1,s+1)]
+      
+      for(p in 1:nrow(peak_df)){
+        
+        single_eie_temp <- subset(single_eie, single_eie$mt.seconds >= peak_df[p,1] & single_eie$mt.seconds <= peak_df[p,2])
+        fwhm_mt_left <- single_eie_temp$mt.seconds[which.min(abs(single_eie_temp[,2] - intensity_fwhm[p]))]
+        
+        single_eie_temp <- subset(single_eie, single_eie$mt.seconds <= peak_df[p,3] & single_eie$mt.seconds >= peak_df[p,2])
+        fwhm_mt_right <- single_eie_temp$mt.seconds[which.min(abs(single_eie_temp[,2] - intensity_fwhm[p]))]
+        
+        fwhm_vec <- append(fwhm_vec, fwhm_mt_right - fwhm_mt_left)
+        
+      }
+      
+      peak_df$fwhm <- fwhm_vec
+      
+      # Determine the fwhm of the peaks (n = num_of_injections) with the greatest area
+      
+      df_temp <- peak_df[order(-peak_df[,8]),]
+      df_temp <- df_temp[1:num_of_injections,]
+      
+      fwhm_cutoff <- median(df_temp$fwhm)
+      
+      peak_df <- subset(peak_df, peak_df$fwhm <= (fwhm_cutoff * is_df$peak.fwhm.tolerance.multiplier[s]))
+      peak_df <- peak_df[,c(1:7)]
+      
+      # subset peak_df so that only the peaks (n = number.of.injections) with the greatest area are kept
+      
+      cut_off <- sort(peak_df[,7], decreasing = TRUE)[num_of_injections]
+      
+      peak_df <- subset(peak_df, peak_df[,7] >= cut_off)
+      
+      ## Peak space filtering ----
+      
+      # Determine the upper and lower migration time limits for space between peaks
+      
+      median_space <- peak_df[,2] %>%
+        diff() %>%
+        median()
+      
+      median_space_tol <- is_df$peak.space.tolerance.percent[s] / 100
+      
+      median_space_lower_lim <- median_space - median_space * median_space_tol
+      median_space_upper_lim <- median_space + median_space * median_space_tol
+      
+      # Check if peaks migrate within the tolerance limits
+      
+      peak_space_tol_check <- between(diff(peak_df[,2]), median_space_lower_lim, median_space_upper_lim)
+      
+      if(all(peak_space_tol_check) != TRUE){
+        bad_space <- which(peak_space_tol_check == FALSE)
+      }else{
+        bad_space <- NA
+      }
+      
+      ## Scenario 1 ----
+      # Only one bad space is detected
+      
+      if(length(bad_space) == 1 & is.na(bad_space[1]) == FALSE){
+        
+        false_peak_diff <- peak_df[num_of_injections, 2] - peak_df[(num_of_injections - 1), 2]
+        
+        # This algorithm always assumes the final peak is false - likely due to carryover
+        # It is possible the first peak is false but this seems less likely
+        # Final peak only removed if case 1 does not produce a duplicate
+        
+        # Case 1- An interior peak is missing (usually a blank)
+        
+        if(bad_space != (num_of_injections - 1)){
+          
+          # Since the we know the bad space is not at the end, use the space after the bad space to find the expected apex
+          
+          expected_peak_apex <- peak_df[bad_space[1],2] + peak_df[(bad_space[1] + 2),2] - peak_df[(bad_space[1] + 1),2]
+          
+        }
+        
+        # Case 2 -  Final space is false and less than median - suspect that true final peak was missed
+        
+        if(bad_space == (num_of_injections - 1) & false_peak_diff < median_space_upper_lim){
+          expected_peak_apex <- peak_df[(num_of_injections - 1 ),2] + median_space
+        }
+        
+        # Case 3 - Final space is false and greater than median - suspect that peak 1 was missed
+        
+        if(bad_space == (num_of_injections - 1) & false_peak_diff > median_space_lower_lim){
+          expected_peak_apex <- peak_df[1,2] - median_space
+        }
+        
+        peak <- which.min(abs(peak_df_fill[,2] - expected_peak_apex))
+        
+        # If the nearest peak is too far from the expected migration time use a place holder
+        
+        if (abs(peak_df_fill[peak,2] - expected_peak_apex) > (median_space / 2)){
+          
+          nearest_mt <- (eie_df$mt.seconds - expected_peak_apex) %>%
+            abs() %>%
+            which.min(.)
+          
+          peaks <- data.frame(eie_df[nearest_mt,1],
+                              eie_df[nearest_mt,1],
+                              eie_df[nearest_mt,1],
+                              eie_df[nearest_mt,s + 1],
+                              eie_df[nearest_mt,s + 1],
+                              eie_df[nearest_mt,s + 1],
+                              0)
+          
+          colnames(peaks) <- colnames(peak_df)
+          
+          peak_df <- rbind(peak_df, peaks)
+          
+          peak_df <- peak_df[order(peak_df[,2]),]
+          
+        }else{
+          
+          peak_df <- rbind(peak_df, peak_df_fill[peak,])
+          
+          peak_df <- peak_df[order(peak_df[,2]),]
+          
+        }
+        
+        # Remove bad peak
+        
+        if (any(duplicated(peak_df[,2]))){
+          
+          peak_df <- peak_df[-c(which(duplicated(peak_df[,2]))),]
+          
+        }else{
+          
+          peak_df <- peak_df[1:(num_of_injections),]
+          
+        }
+      }
+      
+      ## Scenario 2 ---- 
+      #Two or three bad spaces are detected 
+      
+      if(length(bad_space) == 2 | length(bad_space) == 3){
+        
+        peaks_to_check <- c(bad_space, (bad_space + 1)) %>%
+          unique() %>%
+          sort()
+        
+        # Outside peaks must be checked last
+        
+        peaks_to_check <- c(peaks_to_check[-1], peaks_to_check[1])
+        
+        # Loop through each suspect bad peak and remove them iteratively until the number of bad spaces reaches 1
+        
+        for (p in 1:length(peaks_to_check)){
+          
+          num_bad_space <- peak_df[,2] %>%
+            .[-c(peaks_to_check[p])] %>%
+            diff(.) %>%
+            between (median_space_lower_lim, median_space_upper_lim) 
+          num_bad_space <- length(which(num_bad_space == FALSE))
+          
+          if (num_bad_space == 1){
+            peak_df <- peak_df[-c(peaks_to_check[p]),]
+            break
+          }
+        }
+        
+        # To avoid errors where removing a peak results in 0 bad spaces only fill
+        # in gap if nrow(peak_df) == number of injections - 1
+        
+        if(nrow(peak_df) == (num_of_injections - 1)){
+          
+          # Find the peak gap and calculate the expected migration time for the missing peak
+          
+          gap <- which(between(diff(peak_df[,2]), median_space_lower_lim, median_space_upper_lim) == FALSE)
+          
+          expected_peak_apex <- (peak_df[(gap[1] + 1),2] - peak_df[gap[1],2])/2 + peak_df[gap[1],2]
+          
+          # Find the nearest peak in the peak_df_fill data frame to the expected migration time
+          # Avoid duplicate peaks by not using exisitng peaks in peak_df
+          
+          peak_df_fill <- subset(peak_df_fill, !(peak_df_fill[,2] %in% peak_df[,2]))
+          
+          peak <- which.min(abs(peak_df_fill[,2] - expected_peak_apex))
+          peak_df <- rbind(peak_df, peak_df_fill[peak,])
+          
+          peak_df <- peak_df[order(peak_df[,2]),]
+          
+        }
+      }
+      
+      # Summarize peak_df data in is.peak_df
+      
+      if(s == 1){
+        is_peaks_df = peak_df
+      }else{
+        is_peaks_df = cbind(is_peaks_df, peak_df)  
+      }
     }
     
-    ## Filter peaks by peak width ----
+    is_peaks_df
+  
+  })
+  
+  # Make a data frame containing the apex migration times of the internal standards
+  # to be used to filter metabolite peaks
+  
+  is_mt_df <- is_peaks_df[,seq(from = 2,
+                               to = ncol(is_peaks_df),
+                               by = 7)]
+  
+  print("Peak Picking and Filtering for Internal Standards Complete")
+  
+  # 8. Metabolite  Peak Detection, Integration, and Filtering ----
+  
+  print("Performing Peak Picking and Filtering for Analytes")
+  
+  ## Peak detection ---- 
+  
+  metabolite_peaks_df <- local ({
     
-    # Define a minimum peak width cut off in seconds. Remove peaks with a width <= cutoff
-    # If the cutoff results in fewer peaks than injections, decrease cutoff by 1 and repeat
     
-    min_width_cut_off <- mass_df$minimim.peak.width.seconds[m - num_of_is]
-    
-    peak_df_trim <- subset(peak_df, (peak_df$end - peak_df$start) >= min_width_cut_off)
-    
-    while (nrow(peak_df_trim) < num_of_injections){
+    for (m in (num_of_is + 1):length(name_vec)){
       
-      min_width_cut_off <- min_width_cut_off - 1
+      peak_df <- data.frame()
+      
+      # Determine the start, apex, and end of peaks. Use the user defined value "n" to detect peaks.
+      # If n results in fewer peaks then injection, decrease n by 1 and repeat
+      
+      n <- 1
+      
+      while (nrow(peak_df) < num_of_injections & n >= 0){
+        
+        rle_output <- eie_df[,m + 1] %>%
+          diff() %>%
+          sign() %>%
+          rle()
+        
+        consecutive_runs <- which(rle_output$lengths > n & rle_output$values == 1)
+        consecutive_runs <- subset(consecutive_runs, (consecutive_runs + 1) %in% (which(rle_output$lengths > n)) == TRUE)
+        
+        run_lengths <- cumsum(rle_output$lengths) + 1
+        
+        start <- eie_df$mt.seconds[run_lengths[consecutive_runs - 1]]
+        apex <- eie_df$mt.seconds[run_lengths[consecutive_runs]]
+        end <- eie_df$mt.seconds[run_lengths[consecutive_runs + 1]]
+        
+        # I will also add intensity values here as well
+        
+        start_intensity <- eie_df[run_lengths[consecutive_runs - 1], (m+1)]
+        apex_intensity <- eie_df[run_lengths[consecutive_runs], (m+1)]
+        end_intensity <- eie_df[run_lengths[consecutive_runs + 1], (m+1)]
+        
+        # Account for peaks that start immediately during the analysis
+        
+        if(length(start) != length(apex)){
+          start <- append(start, 0, 0)
+          start_intensity <- append(start_intensity, 0, 0)
+        }
+        
+        # Create a data frame containing the start, apex, and end migration times of each 
+        # peak in addition to required intensities for FWHM calculations
+        
+        peak_df <- data.frame(start,
+                              apex,
+                              end,
+                              start_intensity,
+                              apex_intensity,
+                              end_intensity)
+        
+        n <- n - 1
+        
+      }
+      
+      ## Filter peaks by peak width ----
+      
+      # Define a minimum peak width cut off in seconds. Remove peaks with a width <= cutoff
+      # If the cutoff results in fewer peaks than injections, decrease cutoff by 1 and repeat
+      
+      min_width_cut_off <- mass_df$minimim.peak.width.seconds[m - num_of_is]
       
       peak_df_trim <- subset(peak_df, (peak_df$end - peak_df$start) >= min_width_cut_off)
       
-    }
-    
-    peak_df <- peak_df_trim
-    
-    ## Integrate peaks ----
-    
-    peak_area_vector = c(1:nrow(peak_df))
-    
-    for (p in 1:nrow(peak_df)){
-      
-      peak_area_vector[p] <- AUC(eie_df$mt.seconds,
-                                 eie_df[,m+1],
-                                 method = "trapezoid",
-                                 from = peak_df[p,1],
-                                 to = peak_df[p,3],
-                                 absolutearea = FALSE,
-                                 na.rm = FALSE)
-      
-      peak_area_vector[p] <- peak_area_vector[p] - (peak_df[p,3] - peak_df[p,1]) * min(peak_df[p,4], peak_df[p,6])
-    }
-    
-    peak_df <- cbind(peak_df, peak_area_vector)
-    
-    # rename peak_df columns
-    
-    colnames(peak_df) <- c(paste(name_vec[m], "start.seconds", sep = "."),
-                           paste(name_vec[m], "apex.seconds", sep = "."),
-                           paste(name_vec[m], "end.seconds", sep = "."),
-                           paste(name_vec[m], "start_intensity", sep = "."),
-                           paste(name_vec[m], "apex_intensity", sep = "."),
-                           paste(name_vec[m], "end_intensity", sep = "."),
-                           paste(name_vec[m], "peak.area", sep = "."))
-    
-    ## Filter peaks ----
-    
-    # Build a data frame to store comments for each metabolite peak
-    
-    comment_df <- matrix(nrow = num_of_injections, ncol = num_of_metabolites, "") %>%
-      as.data.frame
-    
-    colnames(comment_df) <- mass_df$name
-    
-    ### Filter peaks based on smallest rmt difference ----
-    
-    # Determine the expected migration times of the metabolites
-    
-    n <- m - num_of_is
-    left_is <- paste(mi_df$left_is[n], ".apex.seconds", sep ="")
-    right_is <- paste(mi_df$right_is[n], ".apex.seconds", sep ="")
-    rmt_is <- paste(mi_df$description[n], ".apex.seconds", sep ="")
-
-    if(mi_df$description[n] == "mi"){
-      
-      mf_vec <- mi_df[n,5:ncol(mi_df)] %>%
-        unlist() %>%
-        unname()
-
-      expected_mt <- mf_vec * (is_mt_df[,which(colnames(is_mt_df) == right_is)] - is_mt_df[,which(colnames(is_mt_df) == left_is)]) + is_mt_df[,which(colnames(is_mt_df) == left_is)]
-      
-    }else{
-    
-      mf_vec <- mi_df[n,5:ncol(mi_df)] %>%
-        unlist() %>%
-        unname()
-      
-      expected_mt <- mf_vec * is_mt_df[,which(colnames(is_mt_df) == rmt_is)] 
-      
-    }
-    
-    # Filter peak_df for peaks within rmt tolerance
-    
-    migration_window <- mass_df$migration.window.seconds[m - num_of_is]
-    
-    for (i in 1:num_of_injections){
-      
-      peaks <- peak_df %>%
-        filter(., peak_df[,2] <= expected_mt[i] + migration_window & 
-                 peak_df[,2] >= expected_mt[i] - migration_window)
-      
-      # If more than one peak is found choose the nearest one
-      
-      if(nrow(peaks) > 1){
-        peaks <- (peak_df[,2] - expected_mt[i]) %>%
-          abs() %>%
-          which.min(.)
-        peaks <- peak_df[peaks,]
+      while (nrow(peak_df_trim) < num_of_injections){
+        
+        min_width_cut_off <- min_width_cut_off - 1
+        
+        peak_df_trim <- subset(peak_df, (peak_df$end - peak_df$start) >= min_width_cut_off)
+        
       }
       
-      # If no peak is found, generate a place holder
+      peak_df <- peak_df_trim
       
-      if(nrow(peaks) == 0){
+      ## Integrate peaks ----
+      
+      peak_area_vector = c(1:nrow(peak_df))
+      
+      for (p in 1:nrow(peak_df)){
         
-        nearest_mt <- (eie_df$mt.seconds - expected_mt[i]) %>%
-          abs() %>%
-          which.min(.)
+        peak_area_vector[p] <- AUC(eie_df$mt.seconds,
+                                   eie_df[,m+1],
+                                   method = "trapezoid",
+                                   from = peak_df[p,1],
+                                   to = peak_df[p,3],
+                                   absolutearea = FALSE,
+                                   na.rm = FALSE)
         
-        peaks <- data.frame(eie_df[nearest_mt,1],
-                            eie_df[nearest_mt,1],
-                            eie_df[nearest_mt,1],
-                            eie_df[nearest_mt,m + 1],
-                            eie_df[nearest_mt,m + 1],
-                            eie_df[nearest_mt,m + 1],
-                            0)
-        
-        colnames(peaks) <- colnames(peak_df)
+        peak_area_vector[p] <- peak_area_vector[p] - (peak_df[p,3] - peak_df[p,1]) * min(peak_df[p,4], peak_df[p,6])
       }
-
-      if(i == 1){
-        filtered_peaks_df <- peaks
+      
+      peak_df <- cbind(peak_df, peak_area_vector)
+      
+      # rename peak_df columns
+      
+      colnames(peak_df) <- c(paste(name_vec[m], "start.seconds", sep = "."),
+                             paste(name_vec[m], "apex.seconds", sep = "."),
+                             paste(name_vec[m], "end.seconds", sep = "."),
+                             paste(name_vec[m], "start_intensity", sep = "."),
+                             paste(name_vec[m], "apex_intensity", sep = "."),
+                             paste(name_vec[m], "end_intensity", sep = "."),
+                             paste(name_vec[m], "peak.area", sep = "."))
+      
+      ## Filter peaks ----
+      
+      ### Filter peaks based on smallest rmt difference ----
+      
+      # Determine the expected migration times of the metabolites
+      
+      n <- m - num_of_is
+      left_is <- paste(mi_df$left_is[n], ".apex.seconds", sep ="")
+      right_is <- paste(mi_df$right_is[n], ".apex.seconds", sep ="")
+      rmt_is <- paste(mi_df$description[n], ".apex.seconds", sep ="")
+      
+      if(mi_df$description[n] == "mi"){
+        
+        mf_vec <- mi_df[n,5:ncol(mi_df)] %>%
+          unlist() %>%
+          unname()
+        
+        expected_mt <- mf_vec * (is_mt_df[,which(colnames(is_mt_df) == right_is)] - is_mt_df[,which(colnames(is_mt_df) == left_is)]) + is_mt_df[,which(colnames(is_mt_df) == left_is)]
+        
       }else{
-        filtered_peaks_df <- rbind(filtered_peaks_df, peaks)
+        
+        mf_vec <- mi_df[n,5:ncol(mi_df)] %>%
+          unlist() %>%
+          unname()
+        
+        expected_mt <- mf_vec * is_mt_df[,which(colnames(is_mt_df) == rmt_is)] 
+        
       }
-    }
-    
-    ### Filter peaks outside of run time limits ----
-    
-    # Set a place holder for peaks where the expected migration time > total run time
-    
-    total_run_time <- eie_df$mt.seconds[nrow(eie_df)]
-    
-    late_peaks <- (expected_mt > total_run_time) %>%
-      which()
-    
-    # Find migration times to use as placeholders that do not belong to other identified peaks
-    
-    mt <- tail(eie_df$mt.seconds, n = 15)
-    
-    mt <- mt[!(mt %in% filtered_peaks_df[,2])]
-    
-    for (i in late_peaks){
-      mt_temp <- mt[i]
-      filtered_peaks_df[i,] <- c(mt_temp,
-                                 mt_temp,
-                                 mt_temp,
-                                 eie_df[which(eie_df$mt.seconds == mt_temp) ,m + 1],
-                                 eie_df[which(eie_df$mt.seconds == mt_temp) ,m + 1],
-                                 eie_df[which(eie_df$mt.seconds == mt_temp) ,m + 1],
-                                 0)
-    }
-    
-    
-    ### Filter duplicated peaks ----
-    
-    # If the same peak is assigned to multiple injection numbers, reapply rmt filter with more austere rmt tolerances
-    # New rmt tolerance will be the original / count, which starts at 2 and increases by 1 each iteration
-    
-    count = 2
-    
-    while (any(duplicated(filtered_peaks_df[,2])) & count < 100){
       
-      strict_migration_window <- migration_window/count
+      # Filter peak_df for peaks within rmt tolerance
       
-      # find rows with duplicated values 
+      migration_window <- mass_df$migration.window.seconds[m - num_of_is]
       
-      duplicate_location <- filtered_peaks_df[,2] %>%
-        duplicated() %>%
-        which()
-      
-      duplicate_rows <- which(filtered_peaks_df[,2] %in% filtered_peaks_df[duplicate_location,2])
-      
-      # reapply filtering for these peaks with the more strict rmt tolerance
-      
-      for (r in duplicate_rows){
+      for (i in 1:num_of_injections){
         
         peaks <- peak_df %>%
-          filter(., peak_df[,2] <= expected_mt[r] + strict_migration_window & 
-                   peak_df[,2] >= expected_mt[r] - strict_migration_window)
+          filter(., peak_df[,2] <= expected_mt[i] + migration_window & 
+                   peak_df[,2] >= expected_mt[i] - migration_window)
         
         # If more than one peak is found choose the nearest one
         
         if(nrow(peaks) > 1){
-          peaks <- (peak_df[,2] - expected_mt[r]) %>%
+          peaks <- (peak_df[,2] - expected_mt[i]) %>%
             abs() %>%
             which.min(.)
           peaks <- peak_df[peaks,]
@@ -995,7 +897,7 @@ for (d in 1:length(data_files)){
         
         if(nrow(peaks) == 0){
           
-          nearest_mt <- (eie_df$mt.seconds - expected_mt[r]) %>%
+          nearest_mt <- (eie_df$mt.seconds - expected_mt[i]) %>%
             abs() %>%
             which.min(.)
           
@@ -1010,175 +912,272 @@ for (d in 1:length(data_files)){
           colnames(peaks) <- colnames(peak_df)
         }
         
-        filtered_peaks_df[r,] <- peaks
-        
+        if(i == 1){
+          filtered_peaks_df <- peaks
+        }else{
+          filtered_peaks_df <- rbind(filtered_peaks_df, peaks)
+        }
       }
       
-      count = count + 1
-    }
-    
-    # If the duplicate peak filter fails (count = 100) then generate a place holder peak_df
-    # and generate a warning that the filter failed. This filter fails when two or more expected migration 
-    # times are too close to each other.
-    
-    if (count == 100){
+      ### Filter peaks outside of run time limits ----
       
-      mt.temp <- eie_df$mt.seconds[seq(1, num_of_injections * 10, 10)]
+      # Set a place holder for peaks where the expected migration time > total run time
       
-      filtered_peaks_df[,c(1:3)] <- mt.temp
-      filtered_peaks_df[,c(4:7)] <- 0
+      total_run_time <- eie_df$mt.seconds[nrow(eie_df)]
       
-      comment_df[1,name_vec[m]] <- "Peak Filtering Failed to Remove Duplicate Peaks"
-      
-      print(paste("WARNING: Peak Filtering Failed for", name_vec[m]))
-    }
-    
-    ### Filter using peak spaces ----
-    
-    # Get peak space tolerance
-    
-    space_tol <- mass_df$peak.space.tolerance.percent[m - num_of_is] / 100
-    
-    # Make a vector containing all the expected space lengths
-    
-    space_vec <- expected_mt %>%
-      diff()
-    
-    # Define upper and lower peak space limits
-    
-    space_lower_lim <- space_vec - space_vec * space_tol
-    space_upper_lim <- space_vec + space_vec * space_tol
-    
-    # Check if peaks migrate within the tolerance limits
-    
-    peak_space_tol_check <- between(diff(filtered_peaks_df[,2]), space_lower_lim, space_upper_lim)
-    
-    if(all(peak_space_tol_check) != TRUE){
-      bad_space <- which(peak_space_tol_check == FALSE)
-    }else{
-      bad_space <- NA
-    }
-    
-    # identify which peaks are potentially incorrectly assigned (bad peaks)
-    # these are peaks before and after each bad space
-    
-    bad_peaks <- c(bad_space, bad_space + 1) %>%
-      unique() %>%
-      sort()
-    
-    # Define a count that will be used to modify the peak space tolerance
-    
-    count = 4
-    
-    # Keep unaltered filtered peaks data frame for the event that the peak space algorithm fails
-    
-    filtered_peaks_df_retain <- filtered_peaks_df
-    
-    # set count limit to determine when the algorithm fails
-    
-    count_limit = 100
-    
-    # Identify bad peaks, and replace them with peaks meeting peak space criteria
-    # If the number of bad peaks is equal to the number of injections, do not apply this filter
-    
-    while(length(bad_peaks) > 0 & length(bad_peaks) < (num_of_injections - 1) & count < count_limit){
-      
-      # define remaining peaks which are correctly assigned (good peaks)
-      
-      good_peaks <- c(1:num_of_injections) %>%
-        setdiff(., c(bad_peaks))
-      
-      # Use the median of the expected peak space times to find peaks
-      
-      peak_tolerance <- expected_mt %>%
-        diff() %>%
-        median () / count
-      
-      for (b in 1:length(bad_peaks)){
-        
-        # find the nearest good peak neighbor for each bad peak
-        
-        nearest_good_peak <- (good_peaks - bad_peaks[b]) %>%
-          abs() %>%
-          which.min()
-        
-        # calculate the expected migration time 
-        
-        expected_mt <- filtered_peaks_df[good_peaks[nearest_good_peak], 2] - 
-          (good_peaks[nearest_good_peak] - bad_peaks[b]) * median(space_vec)
-        
-        # find peaks nearest to the expected migration time within the tolerance
-        
-        peaks <- peak_df %>%
-          filter(., peak_df[,2] <= expected_mt + peak_tolerance & peak_df[,2] >= expected_mt - peak_tolerance)
-        
-        # if more than one peak is found, select the closest one
-        
-        if(nrow(peaks) > 1){
-          peaks <- (peak_df[,2] - expected_mt) %>%
-            abs() %>%
-            which.min(.)
-          peaks <- peak_df[peaks,]
-        }
-        
-        # if no peaks are found, define a place holder
-        
-        if(nrow(peaks) == 0){
-          
-          nearest_mt <- (eie_df$mt.seconds - expected_mt) %>%
-            abs() %>%
-            which.min(.)
-          
-          peaks <- data.frame(eie_df[nearest_mt,1],
-                              eie_df[nearest_mt,1],
-                              eie_df[nearest_mt,1],
-                              eie_df[nearest_mt,m + 1],
-                              eie_df[nearest_mt,m + 1],
-                              eie_df[nearest_mt,m + 1],
-                              0)
-          
-          colnames(peaks) <- colnames(peak_df)
-          
-          filtered_peaks_df[bad_peaks[b],] <- peaks
-        }
-        
-        # if only one peak is found
-        
-        filtered_peaks_df[bad_peaks[b],] <- peaks
-        
-      }
-      
-      count = count + 1
-      
-      duplicate_location <- filtered_peaks_df[,2] %>%
-        duplicated() %>%
+      late_peaks <- (expected_mt > total_run_time) %>%
         which()
       
-      # bad peaks correspond to any rows that are not unique
+      # Find migration times to use as placeholders that do not belong to other identified peaks
       
-      bad_peaks <- which(filtered_peaks_df[,2] %in% filtered_peaks_df[duplicate_location,2])
+      mt <- tail(eie_df$mt.seconds, n = 15)
+      
+      mt <- mt[!(mt %in% filtered_peaks_df[,2])]
+      
+      for (i in late_peaks){
+        mt_temp <- mt[i]
+        filtered_peaks_df[i,] <- c(mt_temp,
+                                   mt_temp,
+                                   mt_temp,
+                                   eie_df[which(eie_df$mt.seconds == mt_temp) ,m + 1],
+                                   eie_df[which(eie_df$mt.seconds == mt_temp) ,m + 1],
+                                   eie_df[which(eie_df$mt.seconds == mt_temp) ,m + 1],
+                                   0)
+      }
+      
+      
+      ### Filter duplicated peaks ----
+      
+      # If the same peak is assigned to multiple injection numbers, reapply rmt filter with more austere rmt tolerances
+      # New rmt tolerance will be the original / count, which starts at 2 and increases by 1 each iteration
+      
+      count = 2
+      
+      while (any(duplicated(filtered_peaks_df[,2])) & count < 100){
+        
+        strict_migration_window <- migration_window/count
+        
+        # find rows with duplicated values 
+        
+        duplicate_location <- filtered_peaks_df[,2] %>%
+          duplicated() %>%
+          which()
+        
+        duplicate_rows <- which(filtered_peaks_df[,2] %in% filtered_peaks_df[duplicate_location,2])
+        
+        # reapply filtering for these peaks with the more strict rmt tolerance
+        
+        for (r in duplicate_rows){
+          
+          peaks <- peak_df %>%
+            filter(., peak_df[,2] <= expected_mt[r] + strict_migration_window & 
+                     peak_df[,2] >= expected_mt[r] - strict_migration_window)
+          
+          # If more than one peak is found choose the nearest one
+          
+          if(nrow(peaks) > 1){
+            peaks <- (peak_df[,2] - expected_mt[r]) %>%
+              abs() %>%
+              which.min(.)
+            peaks <- peak_df[peaks,]
+          }
+          
+          # If no peak is found, generate a place holder
+          
+          if(nrow(peaks) == 0){
+            
+            nearest_mt <- (eie_df$mt.seconds - expected_mt[r]) %>%
+              abs() %>%
+              which.min(.)
+            
+            peaks <- data.frame(eie_df[nearest_mt,1],
+                                eie_df[nearest_mt,1],
+                                eie_df[nearest_mt,1],
+                                eie_df[nearest_mt,m + 1],
+                                eie_df[nearest_mt,m + 1],
+                                eie_df[nearest_mt,m + 1],
+                                0)
+            
+            colnames(peaks) <- colnames(peak_df)
+          }
+          
+          filtered_peaks_df[r,] <- peaks
+          
+        }
+        
+        count = count + 1
+      }
+      
+      # If the duplicate peak filter fails (count = 100) then generate a place holder peak_df
+      # and generate a warning that the filter failed. This filter fails when two or more expected migration 
+      # times are too close to each other.
+      
+      if (count == 100){
+        
+        mt.temp <- eie_df$mt.seconds[seq(1, num_of_injections * 10, 10)]
+        
+        filtered_peaks_df[,c(1:3)] <- mt.temp
+        filtered_peaks_df[,c(4:7)] <- 0
+        
+      }
+      
+      ### Filter using peak spaces ----
+      
+      # Get peak space tolerance
+      
+      space_tol <- mass_df$peak.space.tolerance.percent[m - num_of_is] / 100
+      
+      # Make a vector containing all the expected space lengths
+      
+      space_vec <- expected_mt %>%
+        diff()
+      
+      # Define upper and lower peak space limits
+      
+      space_lower_lim <- space_vec - space_vec * space_tol
+      space_upper_lim <- space_vec + space_vec * space_tol
+      
+      # Check if peaks migrate within the tolerance limits
+      
+      peak_space_tol_check <- between(diff(filtered_peaks_df[,2]), space_lower_lim, space_upper_lim)
+      
+      if(all(peak_space_tol_check) != TRUE){
+        bad_space <- which(peak_space_tol_check == FALSE)
+      }else{
+        bad_space <- NA
+      }
+      
+      # identify which peaks are potentially incorrectly assigned (bad peaks)
+      # these are peaks before and after each bad space
+      
+      bad_peaks <- c(bad_space, bad_space + 1) %>%
+        unique() %>%
+        sort()
+      
+      # Define a count that will be used to modify the peak space tolerance
+      
+      count = 4
+      
+      # Keep unaltered filtered peaks data frame for the event that the peak space algorithm fails
+      
+      filtered_peaks_df_retain <- filtered_peaks_df
+      
+      # set count limit to determine when the algorithm fails
+      
+      count_limit = 100
+      
+      # Identify bad peaks, and replace them with peaks meeting peak space criteria
+      # If the number of bad peaks is equal to the number of injections, do not apply this filter
+      
+      while(length(bad_peaks) > 0 & length(bad_peaks) < (num_of_injections - 1) & count < count_limit){
+        
+        # define remaining peaks which are correctly assigned (good peaks)
+        
+        good_peaks <- c(1:num_of_injections) %>%
+          setdiff(., c(bad_peaks))
+        
+        # Use the median of the expected peak space times to find peaks
+        
+        peak_tolerance <- expected_mt %>%
+          diff() %>%
+          median () / count
+        
+        for (b in 1:length(bad_peaks)){
+          
+          # find the nearest good peak neighbor for each bad peak
+          
+          nearest_good_peak <- (good_peaks - bad_peaks[b]) %>%
+            abs() %>%
+            which.min()
+          
+          # calculate the expected migration time 
+          
+          expected_mt <- filtered_peaks_df[good_peaks[nearest_good_peak], 2] - 
+            (good_peaks[nearest_good_peak] - bad_peaks[b]) * median(space_vec)
+          
+          # find peaks nearest to the expected migration time within the tolerance
+          
+          peaks <- peak_df %>%
+            filter(., peak_df[,2] <= expected_mt + peak_tolerance & peak_df[,2] >= expected_mt - peak_tolerance)
+          
+          # if more than one peak is found, select the closest one
+          
+          if(nrow(peaks) > 1){
+            peaks <- (peak_df[,2] - expected_mt) %>%
+              abs() %>%
+              which.min(.)
+            peaks <- peak_df[peaks,]
+          }
+          
+          # if no peaks are found, define a place holder
+          
+          if(nrow(peaks) == 0){
+            
+            nearest_mt <- (eie_df$mt.seconds - expected_mt) %>%
+              abs() %>%
+              which.min(.)
+            
+            peaks <- data.frame(eie_df[nearest_mt,1],
+                                eie_df[nearest_mt,1],
+                                eie_df[nearest_mt,1],
+                                eie_df[nearest_mt,m + 1],
+                                eie_df[nearest_mt,m + 1],
+                                eie_df[nearest_mt,m + 1],
+                                0)
+            
+            colnames(peaks) <- colnames(peak_df)
+            
+            filtered_peaks_df[bad_peaks[b],] <- peaks
+          }
+          
+          # if only one peak is found
+          
+          filtered_peaks_df[bad_peaks[b],] <- peaks
+          
+        }
+        
+        count = count + 1
+        
+        duplicate_location <- filtered_peaks_df[,2] %>%
+          duplicated() %>%
+          which()
+        
+        # bad peaks correspond to any rows that are not unique
+        
+        bad_peaks <- which(filtered_peaks_df[,2] %in% filtered_peaks_df[duplicate_location,2])
+        
+      }
+      
+      # if algorithm failed, revert back to filtered_peaks_df
+      
+      if (count == count_limit){
+        
+        filtered_peaks_df <- filtered_peaks_df_retain
+        
+      }
+      
+      # Summarize filtered.peak_df data in metabolite_peak_df
+      
+      if(m == (num_of_is + 1)){
+        metabolite_peaks_df = filtered_peaks_df
+      }else{
+        metabolite_peaks_df = cbind(metabolite_peaks_df, filtered_peaks_df)  
+      }
       
     }
     
-    # if algorithm failed, revert back to filtered_peaks_df
-    
-    if (count == count_limit){
-      
-      filtered_peaks_df <- filtered_peaks_df_retain
-      
-    }
-    
-    # Summarize filtered.peak_df data in metabolite_peak_df
-    
-    if(m == (num_of_is + 1)){
-      metabolite_peaks_df = filtered_peaks_df
-    }else{
-      metabolite_peaks_df = cbind(metabolite_peaks_df, filtered_peaks_df)  
-    }
-    
- }
+    metabolite_peaks_df
+
+  })
   
   ### Filter peaks below LOD ----
+  
+  # Build a data frame to store comments for each metabolite peak
+  
+  comment_df <- matrix(nrow = num_of_injections, ncol = num_of_metabolites, "") %>%
+    as.data.frame
+  
+  colnames(comment_df) <- mass_df$name
   
   # Loop through each metabolite and see if its area is below the LOD threshold
   
@@ -1249,6 +1248,19 @@ for (d in 1:length(data_files)){
       
       interference <- paste(interferences[k], ".apex.seconds", sep = "")
       
+      # Check if interference appears as a metabolite or internal standard.
+      # If not, provide a warning
+      
+      if(!(interferences[k] %in% name_vec)){
+        print(paste("Error: ", "Interference ", interferences[k], " is not an analyte or internal standard", sep = ""))
+      }
+      
+      # Check if a interference window was provided. If not, produce an error.
+      
+      if(is.na(mass_df$interference.comigration.threshold.seconds[m])){
+        print(paste("Error: No interference.comigration.threshold.seconds provided for ", mass_df$name[m], sep = ""))
+      }
+      
       # See if there is any overlap between the metabolite peak and its interference 
       
       metabolite_name <- paste(mass_df$name[m], ".apex.seconds", sep = "")
@@ -1277,20 +1289,6 @@ for (d in 1:length(data_files)){
   colnames(is_comment_df) <- is_df$name
   
   comment_df <- cbind(is_comment_df, comment_df)
-  
-  # Clean local environment
-  
-  rm(list = c("total_run_time", "temp_noise", "start_intensity", "start", "space_vec",
-              "space_upper_lim", "space_tol", "space_lower_lim", "run_lengths", "rmt_is", 
-              "right_is", "region_start", "region_end", "r", "peak_tolerance",
-              "peak_space_tol_check", "peak_area_vector", "noise_vec", "noise",
-              "nearest_mt", "nearest_good_peak", "mt", "min_width_cut_off", "migration_window",
-              "mf_vec", "left_is", "late_peaks", "interferences", "interference", 
-              "good_peaks", "expected_mt", "end_intensity", "end", "duplicate_location",
-              "diff_temp", "count_limit", "count", "consecutive_runs", "bad_space", 
-              "bad_peaks", "apex_intensity", "apex", "rle_output", "peaks", "p", 
-              "n", "m", "k", "j", "i", "b", "peak_df_trim", "peak_df_fill", "peak_df",
-              "interference_df"))
   
   print("Peak Picking and Filtering for Analytes Complete")
   
