@@ -847,7 +847,7 @@ for (d in 1:length(data_files)){
       
       ## Filter peaks ----
       
-      ### Filter peaks based on smallest rmt difference ----
+      ### Filter peaks based on smallest mt difference ----
       
       # Determine the expected migration times of the metabolites
       
