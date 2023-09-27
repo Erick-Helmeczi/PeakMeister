@@ -874,7 +874,7 @@ for (d in 1:length(data_files)){
         
       }
       
-      # Filter peak_df for peaks within rmt tolerance
+      # Filter peak_df for peaks within migration time tolerance
       
       migration_window <- mass_df$migration.window.seconds[m - num_of_is]
       
