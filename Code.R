@@ -488,6 +488,15 @@ for (d in 1:length(data_files)){
       
       peak_area_vector = c(1:nrow(peak_df))
       
+      # If the length of peak_area_vector is less than the number of injections, 
+      # print an error and suggest a solution
+      
+      if (length(peak_area_vector) < num_of_injections){
+        cat(paste("Warning: ", name_vec[s], " EIE contains insufficient data. If an error occurs try:
+        1. Increasing the extraction.window.ppm parameter 
+        2. Adjusting min.mt.min and max.mt.min parameters", sep =""))
+      }
+      
       for (p in 1:nrow(peak_df)){
         
         peak_area_vector[p] <- AUC(eie_df$mt.seconds,
@@ -800,25 +809,23 @@ for (d in 1:length(data_files)){
       ## Filter peaks by peak width ----
       
       # Define a minimum peak width cut off in seconds. Remove peaks with a width <= cutoff
-      # If the cutoff results in fewer peaks than injections, decrease cutoff by 1 and repeat
       
       min_width_cut_off <- mass_df$minimim.peak.width.seconds[m - num_of_is]
       
-      peak_df_trim <- subset(peak_df, (peak_df$end - peak_df$start) >= min_width_cut_off)
-      
-      while (nrow(peak_df_trim) < num_of_injections){
-        
-        min_width_cut_off <- min_width_cut_off - 1
-        
-        peak_df_trim <- subset(peak_df, (peak_df$end - peak_df$start) >= min_width_cut_off)
-        
-      }
-      
-      peak_df <- peak_df_trim
+      peak_df <- subset(peak_df, (peak_df$end - peak_df$start) >= min_width_cut_off)
       
       ## Integrate peaks ----
       
       peak_area_vector = c(1:nrow(peak_df))
+      
+      # If the length of peak_area_vector is less than the number of injections, 
+      # print an error and suggest a solution
+      
+      if (length(peak_area_vector) < num_of_injections){
+        cat(paste("Warning: ", name_vec[m], " EIE contains insufficient data. If an error occurs try:
+        1. Increasing the extraction.window.ppm parameter 
+        2. Decreasing the minimim.peak.width.seconds parameter", sep =""))
+      }
       
       for (p in 1:nrow(peak_df)){
         
