@@ -249,6 +249,24 @@ for (d in 1:length(data_files)){
   
   # 4. Perform Mass Calibration ----
   
+  # Check if mass calibration should be applied
+  
+  calibration_response <- parameters_df$apply.mass.calibration
+  
+  # Confirm response is "Yes" or "No". Otherwise, produce an error.
+  
+  if(calibration_response != "Yes" & calibration_response != "No"){
+    stop(paste("apply.mass.calibration parameter should be 'Yes' or 'No'. ", "'", calibration_response, "' is not an acceptable input.", sep = ""))
+  }
+  
+  if (calibration_response == "No"){
+    
+  print("Skipping Mass Calibration")
+    
+    }
+  
+  if (calibration_response == "Yes"){
+  
   print("Performing Mass Calibration")
   
   # Define mass window and minimum lock mass counts
@@ -302,10 +320,6 @@ for (d in 1:length(data_files)){
     }
   }
   
-  # Check if mass calibration should be applied
-  
-  if (parameters_df$apply.mass.calibration == "Yes"){
-    
     # Loop through each spectrum to build a model and perform the mass calibration
     
     for (s in 1:end(rtime(run_data))[1]){
@@ -482,7 +496,7 @@ for (d in 1:length(data_files)){
       
       # Filter peaks that are outside migration time limits
       
-      peak_df <- subset(peak_df, peak_df$start >= is_df$min.mt.min[s] * 60 & peak_df$end <= is_df$max.mt.min[s] * 60)
+      peak_df <- subset(peak_df, peak_df$apex >= is_df$min.mt.min[s] * 60 & peak_df$apex <= is_df$max.mt.min[s] * 60)
       
       ## Integrate peaks ----
       
