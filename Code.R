@@ -1459,10 +1459,9 @@ for (d in 1:length(data_files)){
   
   ## Generate peak area data frame ----
   
-  peak_area_df <- cbind("file.name" = c(data_files_name[d],2:num_of_injections),
+  peak_area_df <- cbind("file.name" = c(rep(data_files_name[d], num_of_injections)),
                         "peak.number" = c(1:num_of_injections),
                         peaks_df[,seq(from = 7, to = ncol(peaks_df), by = 7)])
-  peak_area_df$file.name[2:num_of_injections] <- ""
   colnames(peak_area_df)[3:(length(name_vec) + 2)] <- name_vec
   
   # Update values to include <LOD and Interfered
@@ -1479,10 +1478,9 @@ for (d in 1:length(data_files)){
   
   ## Generate peak migration time data frame ----
   
-  peak_mt_df <- cbind("file.name" = c(data_files_name[d],2:num_of_injections),
+  peak_mt_df <- cbind("file.name" = c(rep(data_files_name[d], num_of_injections)),
                       "peak.number" = c(1:num_of_injections),
                       peaks_df[,seq(from = 2, to = ncol(peaks_df), by = 7)] / 60)
-  peak_mt_df$file.name[2:num_of_injections] <- ""
   colnames(peak_mt_df)[3:(length(name_vec) + 2)] <- name_vec
   
   if(d == 1){
