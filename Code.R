@@ -1462,7 +1462,7 @@ for (d in 1:length(data_files)){
   
   ## Generate peak area data frame ----
   
-  peak_area_df <- cbind("file.name" = c(rep(data_files_name[d], num_of_injections)),
+  peak_area_df <- cbind("file.name" = c(data_files_name[d], rep("", num_of_injections - 1)),
                         "peak.number" = c(1:num_of_injections),
                         peaks_df[,seq(from = 7, to = ncol(peaks_df), by = 7)])
   colnames(peak_area_df)[3:(length(name_vec) + 2)] <- name_vec
@@ -1481,7 +1481,7 @@ for (d in 1:length(data_files)){
   
   ## Generate peak migration time data frame ----
   
-  peak_mt_df <- cbind("file.name" = c(rep(data_files_name[d], num_of_injections)),
+  peak_mt_df <- cbind("file.name" = c(data_files_name[d], rep("", num_of_injections - 1)),
                       "peak.number" = c(1:num_of_injections),
                       peaks_df[,seq(from = 2, to = ncol(peaks_df), by = 7)] / 60)
   colnames(peak_mt_df)[3:(length(name_vec) + 2)] <- name_vec
