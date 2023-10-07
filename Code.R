@@ -1344,10 +1344,10 @@ for (d in 1:length(data_files)){
     
     peak_mt_df <- peaks_df[,seq(from = 2, to = ncol(peaks_df), by = 7)]
       
-      ann_df <- data.frame("peak.number" = c(1:num_of_injections),
-                           "comment" = comment_df[,n],
-                           "peak.apex.seconds" = peak_mt_df[,n],
-                           "peak.height.counts" = eie_df[which(eie_df$mt.seconds %in% (peak_mt_df[,n])),n+1])
+    ann_df <- data.frame("peak.number" = c(1:num_of_injections),
+                         "comment" = comment_df[,n],
+                         "peak.apex.seconds" = peak_mt_df[,n],
+                         "peak.height.counts" = eie_df[which(eie_df$mt.seconds %in% (peak_mt_df[,n])),n+1])
     
     max_peak_height = max(ann_df$peak.height.counts)
     
@@ -1393,6 +1393,10 @@ for (d in 1:length(data_files)){
       }
     }
     
+    # retain only data required for plotting
+    
+    pf_df <- subset(pf_df, pf_df$intensity != 0)
+    
     ## Plot ----
     
     name <- name_vec[n]
@@ -1403,11 +1407,10 @@ for (d in 1:length(data_files)){
     ymin = min(eie_df[(which(eie_df$mt.seconds == start_mt) - extra_space * 60) : (which(eie_df$mt.seconds == end_df[1,n]) + extra_space * 60),n + 1])
     
     ggplot(data = eie_df) +
-      geom_line(aes(x = mt.seconds/60, y = eie_df[,n+1]), colour = "grey50") +
+      geom_line(aes(x = mt.seconds / 60, y = eie_df[,n + 1]), colour = "grey50") +
       theme_classic() +
-      coord_cartesian(xlim = c(start_mt/60 - extra_space, end_mt/60 + extra_space),
-                      ylim = c(ymin / 3,
-                               1.2 * max_peak_height)) +
+      coord_cartesian(xlim = c(start_mt / 60 - extra_space, end_mt / 60 + extra_space),
+                      ylim = c(ymin / 3, 1.2 * max_peak_height)) +
       scale_y_continuous(name = "Ion Counts",
                          labels = function(x) format(x, scientific = TRUE),
                          expand = c(0,0),
