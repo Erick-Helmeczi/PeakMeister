@@ -82,7 +82,7 @@ data_file_names <- list.files(path = "mzML Files")
 # Summarize user supplied migration time data
 
 metabolites_mt_df <- data.frame(name = mass_df$name, mass_df[,c((ncol(mass_df) - num_of_injections + 1) : ncol(mass_df))])
-is_mt_df <- subset(is_df, is_df$class == "Internal Standard")
+is_mt_df <- subset(is_df, is_df$class == "Reference")
 is_mt_df <- data.frame(name = is_mt_df$name, is_mt_df[,c((ncol(is_mt_df) - num_of_injections + 1) : ncol(is_mt_df))])
 
 # Determine IS on the left
