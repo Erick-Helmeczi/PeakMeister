@@ -48,17 +48,9 @@ dir.create(path = paste(file_name, "/", "Plots", sep = ""),
 file.copy(from = "Mass List and Parameters.xlsx", 
           to = file_name)
 
-# Generate plot sub-folders for plots of each internal standard and metabolite
+# Create a vector of metabolite and internal standard names
 
 name_vec <- c(is_df$name, mass_df$name)
-
-for(n in 1:length(name_vec)){
-  path = paste(file_name, "/", "Plots/",name_vec[n], sep = "")
-  dir.create(path = path,
-             showWarnings = FALSE)
-}
-
-rm(list = c("path", "n", "count"))
 
 # Determine the number of metabolites and internal standards
 
@@ -1443,16 +1435,37 @@ for (d in 1:length(data_files)){
       theme(legend.position = "none",
             text = element_text(size = 25, family = "sans"))
     
-    # Save plots to their respective folders within the "Plots" folder
+    ## Save plots ----
     
-    data_files_name <- list.files(path = "mzML Files")
-    data_files_name <- gsub(".mzML", "", data_files_name, fixed = TRUE)
+    if (parameters_df$plot.format == "Metabolite"){
+      
+      # Save plots to their respective folders within the "Plots" folder
+      
+      data_files_name <- list.files(path = "mzML Files")
+      data_files_name <- gsub(".mzML", "", data_files_name, fixed = TRUE)
+      
+      ggsave(filename=paste(name,"_",data_files_name[d],".png",sep=""),
+             width = 16,
+             height = 9,
+             plot = last_plot(),
+             path = paste(file_name, "/Plots/", name_vec[n], sep = ""))
+      
+    }
     
-    ggsave(filename=paste(name,"_",data_files_name[d],".png",sep=""),
-           width = 16,
-           height = 9,
-           plot = last_plot(),
-           path = paste(file_name, "/Plots/", name_vec[n], sep = ""))
+    if (parameters_df$plot.format == "Sample"){
+      
+      folder <- ifelse(n <= num_of_is, "Internal Standards", "Analytes")
+      
+      data_files_name <- list.files(path = "mzML Files")
+      data_files_name <- gsub(".mzML", "", data_files_name, fixed = TRUE)
+      
+      ggsave(filename = paste(mz, "_", name,".png",sep=""),
+             width = 16,
+             height = 9,
+             plot = last_plot(),
+             path = paste(file_name, "/Plots/", folder, "/", data_files_name[d], sep = ""))
+      
+    }
     
   }
   
@@ -1519,5 +1532,3 @@ for (d in 1:length(data_files)){
 # close progress bar
 
 close(pb)
-
-git test
