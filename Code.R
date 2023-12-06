@@ -5,7 +5,7 @@ rm(list=ls())
 if (!require("pacman", quietly = TRUE)) install.packages("pacman")
 if (!require("BiocManager", quietly = TRUE)) install.packages("BiocManager")
 
-pacman::p_load("tidyverse", "stats", "DescTools", "xcms", "rlang",
+pacman::p_load("tidyverse", "stats", "DescTools", "xcms", "rlang", "ggpubr",
                install = TRUE)
 
 # 1. Load Data and Parameters ----
@@ -1330,6 +1330,11 @@ for (d in 1:length(data_files)){
   
   print("Plotting Electropherograms")
   
+  # Make a list to save plots to
+  
+  plot_list <- vector("list", length(name_vec))
+  names(plot_list) <- name_vec
+  
   for (n in 1:length(name_vec)){
     
     ## Create annotation data frame ----
@@ -1340,8 +1345,6 @@ for (d in 1:length(data_files)){
                          "comment" = comment_df[,n],
                          "peak.apex.seconds" = peak_mt_df[,n],
                          "peak.height.counts" = eie_df[which(eie_df$mt.seconds %in% (peak_mt_df[,n])),n+1])
-    
-    max_peak_height = max(ann_df$peak.height.counts)
     
     ## Create peak fill data frame ----
     
@@ -1385,90 +1388,196 @@ for (d in 1:length(data_files)){
       }
     }
     
-    # retain only data required for plotting
+    # Only retain filling data required for plotting
     
     pf_df <- subset(pf_df, pf_df$intensity != 0)
     
-    ## Plot ----
+    # Save variables to a list
     
-    name <- name_vec[n]
-    mz <- mz_vec[n]
-    start_mt <- start_df[1,n]
-    end_mt <- end_df[num_of_injections,n]
-    extra_space <- ifelse(start_mt > 70, 1, 0)
-    ymin = min(eie_df[(which(eie_df$mt.seconds == start_mt) - extra_space * 60) : (which(eie_df$mt.seconds == end_df[1,n]) + extra_space * 60),n + 1])
+    plot_list[[name_vec[n]]] <- list("eie_data" = eie_df[,c(1,(n + 1))], 
+                                     "annotation_data" = ann_df, 
+                                     "integration_data" = pf_df,
+                                     "label_data" = c(name_vec[n],
+                                                      mz_vec[n]),
+                                     "x_axis_data" = c(start_df[1,n],
+                                                      end_df[num_of_injections,n]),
+                                     "y_axis_data" = c(max(ann_df$peak.height.counts), 
+                                                       max(eie_df[,(n + 1)])))
+
+  }
+  
+  plot_function <- function(eie_data, annotation_data, integration_data, label_data, x_axis_data, y_axis_data){
     
-    ggplot(data = eie_df) +
-      geom_line(aes(x = mt.seconds / 60, y = eie_df[,n + 1]), colour = "grey50") +
+    extra_space <- ifelse(x_axis_data[1] > 70, 1, 0)
+
+    ggplot(data = eie_data) +
+      geom_line(aes(x = mt.seconds / 60, y = eie_data[,2]), colour = "grey50") +
       theme_classic() +
-      coord_cartesian(xlim = c(start_mt / 60 - extra_space, end_mt / 60 + extra_space),
-                      ylim = c(ymin / 3, 1.2 * max_peak_height)) +
+      coord_cartesian(xlim = c(x_axis_data[1] / 60 - extra_space, x_axis_data[2] / 60 + extra_space),
+                      ylim = c(0, 1.5 * y_axis_data[1])) +
       scale_y_continuous(name = "Ion Counts",
                          labels = function(x) format(x, scientific = TRUE),
                          expand = c(0,0),
                          breaks = scales::pretty_breaks(n = 10)) +
       scale_x_continuous(name = "Migration Time (Minutes)",
                          breaks = scales::pretty_breaks(n = 10))+
-      ggtitle(paste(name, " EIE", " (m/z = ", mz,")",sep = ""),
+      ggtitle(paste(label_data[1], " EIE", " (m/z = ", label_data[2],")",sep = ""),
               subtitle = paste("Data File: ", data_files[d])) +
-      geom_ribbon(data = pf_df,
+      geom_ribbon(data = integration_data,
                   aes(x = mt.seconds/60, ymax = intensity, ymin = baseline, fill = peak.number),
                   alpha =0.4) +
-      geom_text(data = ann_df,
-                label = ann_df$peak.number,
-                size  = 7,
+      geom_text(data = annotation_data,
+                label = annotation_data$peak.number,
+                size  = font_size_1,
                 family = "sans",
                 aes(x = peak.apex.seconds/60,
-                    y = peak.height.counts + 0.08 * max_peak_height)) +
-      geom_text(data = ann_df,
-                label = ann_df$comment,
-                size  = 7,
+                    y = peak.height.counts + 0.1 * y_axis_data[1])) +
+      geom_text(data = annotation_data,
+                label = annotation_data$comment,
+                size  = font_size_1,
                 family = "sans",
                 aes(x = peak.apex.seconds/60,
-                    y = peak.height.counts + 0.12 * max_peak_height)) +
-      geom_segment(data = ann_df,
-                   aes(x = peak.apex.seconds/60,
-                       y = peak.height.counts + 0.04 * max_peak_height,
-                       xend = peak.apex.seconds/60,
-                       yend = peak.height.counts + 0.01 * max_peak_height),
-                   arrow = arrow(length = unit(0.15, "cm"), type = "closed")) +
+                    y = peak.height.counts + 0.2 * y_axis_data[1])) +
       theme(legend.position = "none",
-            text = element_text(size = 25, family = "sans"))
+            text = element_text(size = font_size_2, family = "sans"))
+    
+  }
     
     ## Save plots ----
+  
+  if (parameters_df$plot.format == "Sample"){
     
+    data_files_name <- list.files(path = "mzML Files")
+    data_files_name <- gsub(".mzML", "", data_file_names, fixed = TRUE)
+    
+    # Save Internal Standard Plots
+    
+    for (n in 1:num_of_is){
+      
+      folder <- "Internal Standards"
+      name <- name_vec[n]
+      
+      font_size_1 <- 7
+      font_size_2 <- 25
+      
+      ggsave(filename = paste(n, "_", name,".png",sep=""),
+             width = 16,
+             height = 9,
+             plot = plot_function(eie_data = plot_list[[n]][[1]], 
+                                  annotation_data = plot_list[[n]][[2]], 
+                                  integration_data = plot_list[[n]][[3]],
+                                  label_data = plot_list[[n]][[4]],
+                                  x_axis_data = plot_list[[n]][[5]],
+                                  y_axis_data = plot_list[[n]][[6]]),
+             path = paste(file_name, "/Plots/", folder, "/", data_files_name[d], sep = ""))
+      
+    }
+    
+    # Save Analyte Plots
+    
+    for (n in (num_of_is + 1):nrow(mi_df)){
+      
+      folder <- "Analytes"
+      name <- name_vec[n]
+      
+      # Analytes using RMT
+      
+      if (mi_df$description[n - num_of_is] != "mi"){
+        
+        font_size_1 <- 4
+        font_size_2 <- 12
+        
+        is_index <- which(name_vec == mi_df$description[(n - num_of_is)])
+        
+        figure <- ggarrange(plot_function(eie_data = plot_list[[n]][[1]], 
+                                          annotation_data = plot_list[[n]][[2]], 
+                                          integration_data = plot_list[[n]][[3]],
+                                          label_data = plot_list[[n]][[4]],
+                                          x_axis_data = c(min(eie_df$mt.seconds), max(eie_df$mt.seconds)),
+                                          y_axis_data = plot_list[[n]][[6]][2]), 
+                            plot_function(eie_data = plot_list[[n]][[1]], 
+                                          annotation_data = plot_list[[n]][[2]], 
+                                          integration_data = plot_list[[n]][[3]],
+                                          label_data = plot_list[[n]][[4]],
+                                          x_axis_data = plot_list[[n]][[5]],
+                                          y_axis_data = plot_list[[n]][[6]]), 
+                            plot_function(eie_data = plot_list[[is_index]][[1]], 
+                                          annotation_data = plot_list[[is_index]][[2]], 
+                                          integration_data = plot_list[[is_index]][[3]],
+                                          label_data = plot_list[[is_index]][[4]],
+                                          x_axis_data = plot_list[[n]][[5]],
+                                          y_axis_data = plot_list[[is_index]][[6]]),
+                            ncol = 1, nrow = 3)
+        
+        ggsave(filename = paste(n, "_", name,".png",sep=""),
+               width = 16,
+               height = 9,
+               plot = figure,
+               path = paste(file_name, "/Plots/", folder, "/", data_files_name[d], sep = ""))
+      }
+      
+      # Analytes using MI
+      
+      if (mi_df$description[n - num_of_is] == "mi"){
+        
+        font_size_1 <- 4
+        font_size_2 <- 12
+        
+        is_index <- which(name_vec == mi_df$description[(n - num_of_is)])
+        
+        figure <- ggarrange(plot_function(eie_data = plot_list[[n]][[1]], 
+                                          annotation_data = plot_list[[n]][[2]], 
+                                          integration_data = plot_list[[n]][[3]],
+                                          label_data = plot_list[[n]][[4]],
+                                          x_axis_data = c(min(eie_df$mt.seconds), max(eie_df$mt.seconds)),
+                                          y_axis_data = plot_list[[n]][[6]][2]), 
+                            plot_function(eie_data = plot_list[[n]][[1]], 
+                                          annotation_data = plot_list[[n]][[2]], 
+                                          integration_data = plot_list[[n]][[3]],
+                                          label_data = plot_list[[n]][[4]],
+                                          x_axis_data = plot_list[[n]][[5]],
+                                          y_axis_data = plot_list[[n]][[6]]),
+                            ncol = 1, nrow = 2)
+        
+        ggsave(filename = paste(n, "_", name,".png",sep=""),
+               width = 16,
+               height = 9,
+               plot = figure,
+               path = paste(file_name, "/Plots/", folder, "/", data_files_name[d], sep = ""))
+      }
+    }
+  }
+  
     if (parameters_df$plot.format == "Metabolite"){
       
       # Save plots to their respective folders within the "Plots" folder
       
       data_files_name <- list.files(path = "mzML Files")
-      data_files_name <- gsub(".mzML", "", data_files_name, fixed = TRUE)
+      data_files_name <- gsub(".mzML", "", data_file_names, fixed = TRUE)
       
-      ggsave(filename=paste(name,"_",data_files_name[d],".png",sep=""),
-             width = 16,
-             height = 9,
-             plot = last_plot(),
-             path = paste(file_name, "/Plots/", name_vec[n], sep = ""))
+      # Save Internal Standard Plots
       
+      for (n in 1:length(name_vec)){
+        
+        folder <- name_vec[n]
+
+        font_size_1 <- 7
+        font_size_2 <- 25
+        
+        ggsave(filename = paste(data_files_name[d],".png",sep=""),
+               width = 16,
+               height = 9,
+               plot = plot_function(eie_data = plot_list[[n]][[1]], 
+                                    annotation_data = plot_list[[n]][[2]], 
+                                    integration_data = plot_list[[n]][[3]],
+                                    label_data = plot_list[[n]][[4]],
+                                    x_axis_data = plot_list[[n]][[5]],
+                                    y_axis_data = plot_list[[n]][[6]]),
+               path = paste(file_name, "/Plots/", folder, "/", sep = ""))
+        
+      }
     }
     
-    if (parameters_df$plot.format == "Sample"){
-      
-      folder <- ifelse(n <= num_of_is, "Internal Standards", "Analytes")
-      
-      data_files_name <- list.files(path = "mzML Files")
-      data_files_name <- gsub(".mzML", "", data_files_name, fixed = TRUE)
-      
-      ggsave(filename = paste(mz, "_", name,".png",sep=""),
-             width = 16,
-             height = 9,
-             plot = last_plot(),
-             path = paste(file_name, "/Plots/", folder, "/", data_files_name[d], sep = ""))
-      
-    }
-    
-  }
-  
   print("Plotting Complete")
   
   # 10. Export Data ----
