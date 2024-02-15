@@ -1475,7 +1475,7 @@ for (d in 1:length(data_files)){
     
     # Save Analyte Plots
     
-    for (n in (num_of_is + 1):nrow(mi_df)){
+    for (n in (num_of_is + 1):length(name_vec)){
       
       folder <- "Analytes"
       name <- name_vec[n]
