@@ -199,7 +199,7 @@ print("Migration Factor Calculation Complete")
 
 # Initiate progress bar
 
-pb <- winProgressBar(title = "Peak Seeker", 
+pb <- winProgressBar(title = "PeakMeister", 
                      label = paste("Number of Files Completed: 0 /", length(data_files)), 
                      min = 0,      
                      max = length(data_files), 
