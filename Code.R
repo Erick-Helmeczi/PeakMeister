@@ -554,39 +554,45 @@ for (d in 1:length(data_files)){
       
       ## FWHM filtering ----
       
-      # Find the peak intensity at half the peak height
+      # Do not not apply the FWHM filter if the number of injections is equal to 1
       
-      intensity_fwhm <- peak_df[,4] + (peak_df[,5] - peak_df[,4])/2 
-      
-      # Find the migration times closest to these intensities within each peak
-      
-      fwhm_vec <- vector()
-      single_eie <- eie_df[,c(1,s+1)]
-      
-      for(p in 1:nrow(peak_df)){
+      if (parameters_df$number.of.injections != 1) {
         
-        single_eie_temp <- subset(single_eie, single_eie$mt.seconds >= peak_df[p,1] & single_eie$mt.seconds <= peak_df[p,2])
-        fwhm_mt_left <- single_eie_temp$mt.seconds[which.min(abs(single_eie_temp[,2] - intensity_fwhm[p]))]
+        # Find the peak intensity at half the peak height
         
-        single_eie_temp <- subset(single_eie, single_eie$mt.seconds <= peak_df[p,3] & single_eie$mt.seconds >= peak_df[p,2])
-        fwhm_mt_right <- single_eie_temp$mt.seconds[which.min(abs(single_eie_temp[,2] - intensity_fwhm[p]))]
+        intensity_fwhm <- peak_df[,4] + (peak_df[,5] - peak_df[,4])/2 
         
-        fwhm_vec <- append(fwhm_vec, fwhm_mt_right - fwhm_mt_left)
+        # Find the migration times closest to these intensities within each peak
+        
+        fwhm_vec <- vector()
+        single_eie <- eie_df[,c(1,s+1)]
+        
+        for(p in 1:nrow(peak_df)){
+          
+          single_eie_temp <- subset(single_eie, single_eie$mt.seconds >= peak_df[p,1] & single_eie$mt.seconds <= peak_df[p,2])
+          fwhm_mt_left <- single_eie_temp$mt.seconds[which.min(abs(single_eie_temp[,2] - intensity_fwhm[p]))]
+          
+          single_eie_temp <- subset(single_eie, single_eie$mt.seconds <= peak_df[p,3] & single_eie$mt.seconds >= peak_df[p,2])
+          fwhm_mt_right <- single_eie_temp$mt.seconds[which.min(abs(single_eie_temp[,2] - intensity_fwhm[p]))]
+          
+          fwhm_vec <- append(fwhm_vec, fwhm_mt_right - fwhm_mt_left)
+          
+        }
+        
+        peak_df$fwhm <- fwhm_vec
+        
+        # Determine the fwhm of the peaks (n = num_of_injections) with the greatest area
+        
+        df_temp <- peak_df[order(-peak_df[,8]),]
+        df_temp <- df_temp[1:num_of_injections,]
+        
+        fwhm_cutoff <- median(df_temp$fwhm)
+        
+        peak_df <- subset(peak_df, peak_df$fwhm <= (fwhm_cutoff * is_df$peak.fwhm.tolerance.multiplier[s]))
+        peak_df <- peak_df[,c(1:7)]
         
       }
-      
-      peak_df$fwhm <- fwhm_vec
-      
-      # Determine the fwhm of the peaks (n = num_of_injections) with the greatest area
-      
-      df_temp <- peak_df[order(-peak_df[,8]),]
-      df_temp <- df_temp[1:num_of_injections,]
-      
-      fwhm_cutoff <- median(df_temp$fwhm)
-      
-      peak_df <- subset(peak_df, peak_df$fwhm <= (fwhm_cutoff * is_df$peak.fwhm.tolerance.multiplier[s]))
-      peak_df <- peak_df[,c(1:7)]
-      
+    
       # subset peak_df so that only the peaks (n = number.of.injections) with the greatest area are kept
       
       cut_off <- sort(peak_df[,7], decreasing = TRUE)[num_of_injections]
