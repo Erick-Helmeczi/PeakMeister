@@ -52,6 +52,12 @@ file.copy(from = "Mass List and Parameters.xlsx",
 
 name_vec <- c(is_df$name, mass_df$name)
 
+# Check for duplicate metabolite and internal standard names
+
+if (sum(duplicated(name_vec)) > 0){
+  stop("Mass List and Parameters.xlsx contains duplicated metabolite or internal standard names.")
+}
+
 # Determine the number of metabolites and internal standards
 
 num_of_metabolites <- nrow(mass_df)
@@ -68,6 +74,18 @@ data_files <- list.files(path = "mzML Files",
                          full.names = TRUE)
 
 data_file_names <- list.files(path = "mzML Files")
+
+# Create metabolite sub-folders if plotting is set to "Metabolite"
+
+if (parameters_df$plot.format == "Metabolite"){
+  
+  for (i in 1:length(name_vec)){
+    
+    dir.create(path = paste(file_name, "/", "Plots", "/", name_vec[i], sep = ""),
+               showWarnings = FALSE)
+    
+  }
+}
 
 # 2. Migration Index Calculation ----
 
@@ -1456,6 +1474,24 @@ for (d in 1:length(data_files)){
     data_files_name <- list.files(path = "mzML Files")
     data_files_name <- gsub(".mzML", "", data_file_names, fixed = TRUE)
     
+    # Create sub-folders
+    
+    if (d == 1){
+      
+      dir.create(path = paste(file_name, "/Plots/", "Analytes", sep = ""),
+                 showWarnings = TRUE)
+      
+      dir.create(path = paste(file_name, "/Plots/", "Internal Standards", sep = ""),
+                 showWarnings = TRUE)
+      
+    }
+    
+    dir.create(path = paste(file_name, "/Plots/", "Internal Standards", "/", data_files_name[d], sep = ""),
+               showWarnings = TRUE)
+    
+    dir.create(path = paste(file_name, "/Plots/", "Analytes", "/", data_files_name[d], sep = ""),
+               showWarnings = TRUE)
+    
     # Save Internal Standard Plots
     
     for (n in 1:num_of_is){
@@ -1465,7 +1501,7 @@ for (d in 1:length(data_files)){
       
       font_size_1 <- 7
       font_size_2 <- 25
-      
+
       ggsave(filename = paste(n, "_", name,".png",sep=""),
              width = 16,
              height = 9,
