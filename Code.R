@@ -205,6 +205,36 @@ mi_df <- cbind(name = mass_df$name,
                description = summary_vec,
                mi_df[2:ncol(mi_df)])
 
+## User Supplied MTIs ----
+# Read MTIs calculated by users for infrequently measured analytes
+
+if (parameters_df$Manual.Indexes == "Yes"){
+  
+  user_mti_df <- read.csv("User Supplied Migration Indexes.csv")
+  
+  names = unique(c(user_mti_df$name, user_mti_df$left_is, user_mti_df$right_is, user_mti_df$description))
+  
+  if(all(names %in% c(name_vec, "mi", "none")) == FALSE){
+    stop(paste("Names detected in User Supplied Migration Indexes.csv not found in Mass List and Parameters", sep = ""))
+  }
+  
+  if (ncol(user_mti_df) != (4 + num_of_injections)){
+    stop(paste("make sure User Supplied Migration Indexes.csv contains migration time indexes for all ", num_of_injections, " injections", sep = ""))
+  }
+  
+  for (i in 1:nrow(user_mti_df)){
+    row = which(mi_df$name == user_mti_df$name[i])
+    
+    if(length(row) == 0){
+      stop(paste("Metabolite ", user_mti_df$name[i], " from User Supplied Migration Indexs.csv is not in Mass List and Parameters.xlsx", sep = ""))
+    }
+    
+    mi_df[row, 2:ncol(mi_df)] <- user_mti_df[i, 2:ncol(user_mti_df)]
+    
+  }
+  
+}
+
 write.csv(mi_df, 
           paste(file_name, "/", "Migration Index Summary.csv", sep = ""), 
           row.names = FALSE)
